@@ -1,0 +1,12 @@
+{
+  "name": "cinematrix1",
+  "version": "1.0.0",
+  "description": "CinaMatrix - Interactive Cinema Analytics & Visualizations",
+  "main": "indexv5.html",
+  "scripts": {
+    "dev": "python news_proxy.py & python -m http.server 8080"
+  },
+  "keywords": ["cinema", "analytics", "3d-visualization"],
+  "author": "",
+  "license": "MIT"
+}
