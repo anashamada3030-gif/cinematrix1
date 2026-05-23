@@ -163,7 +163,7 @@ html,body{height:100%;font-family:'Outfit',sans-serif;background:var(--bg);color
 
 /* ── Hero banner ── */
 .hero-banner{position:relative;height:360px;overflow:hidden;background:var(--bg2);padding-top:56px}
-.hero-backdrop{position:absolute;inset:0;background-size:cover;background-position:center top;filter:brightness(0.55) saturate(1.1) contrast(1.05);image-rendering:high-quality;transform:scale(1.02);transition:background-image 0.6s ease}
+.hero-backdrop{position:absolute;inset:0;background-size:cover;background-position:center 20%;filter:brightness(0.6) saturate(1.15) contrast(1.05);transition:background-image 0.5s ease}
 .hero-gradient{position:absolute;inset:0;background:linear-gradient(to right,rgba(8,11,18,0.88) 35%,transparent),linear-gradient(to top,rgba(8,11,18,0.95) 0%,transparent 50%)}
 .hero-content{position:relative;padding:50px 48px 36px;display:flex;flex-direction:column;justify-content:flex-end;height:100%}
 .hero-tag{font-size:9px;letter-spacing:4px;color:var(--gold);text-transform:uppercase;margin-bottom:10px}
@@ -230,7 +230,7 @@ html,body{height:100%;font-family:'Outfit',sans-serif;background:var(--bg);color
 .time-badge{font-size:10px;background:var(--gold-dim);border:1px solid rgba(201,168,76,0.3);color:var(--gold);padding:2px 8px;border-radius:4px}
 
 /* ── Top Rated Page ── */
-#top-rated-bg{position:fixed;top:0;left:var(--sidebar-w);right:0;bottom:0;background-size:cover;background-position:center top;filter:brightness(0.35) saturate(0.9) contrast(1.1);transition:background-image 0.6s ease;pointer-events:none;z-index:0;image-rendering:high-quality}
+#top-rated-bg{position:fixed;top:0;left:0;right:0;bottom:0;background-size:cover;background-position:center center;filter:brightness(0.3) saturate(0.85) contrast(1.15);transition:background-image 0.5s ease;pointer-events:none;z-index:0}
 #page-top-rated .page-inner{position:relative;z-index:1}
 .top-rated-item{display:flex;align-items:center;gap:16px;padding:14px 28px;border-bottom:1px solid var(--border);cursor:pointer;transition:background 0.2s;position:relative}
 .top-rated-item:hover{background:rgba(255,255,255,0.03)}
@@ -808,12 +808,31 @@ document.addEventListener('fullscreenchange', () => {
 const $ = id => document.getElementById(id);
 const safe = s => String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 
+
+// Upgrade poster URL to highest available resolution
+function getPosterUrl(m) {
+  const p = m.poster_url || '';
+  if (p && p.includes('image.tmdb.org'))
+    return p.replace(/\/t\/p\/[^\/]+\//, '/t/p/w780/');
+  return p;
+}
+
+// Convert any TMDB poster URL → high-res backdrop URL
+function getBackdropUrl(m) {
+  const bd = m.backdrop_url || m.backdrop || m.backdrop_path || '';
+  if (bd) return bd.replace(/\/t\/p\/[^\/]+\//, '/t/p/original/');
+  const p = m.poster_url || '';
+  if (p && p.includes('image.tmdb.org'))
+    return p.replace(/\/t\/p\/[^\/]+\//, '/t/p/original/');
+  return p;
+}
+
 function movieCardHTML(m, onclick='') {
   const title = m.title || m.name || '';
   const year = (m.release_date||m.year||'').slice(0,4);
   const rating = parseFloat(m.vote_average||0).toFixed(1);
   const type = m.media_type === 'tv' ? '📺' : '🎬';
-  const poster = (m.poster_url||'');
+  const poster = getPosterUrl(m);
   return `<div class="movie-card" onclick="${onclick}">
     <div class="poster-wrap">
       ${poster ? `<img src="${poster}" class="poster-img" loading="lazy" onerror="this.src=''" alt="${safe(title)}">` : `<span style="font-size:32px;position:absolute;top:50%;left:50%;transform:translate(-50%,-50%)">🎬</span>`}
@@ -899,7 +918,7 @@ function initHome() {
 }
 
 function updateHero(m) {
-  $('home-backdrop').style.backgroundImage = m.poster_url ? `url(${m.poster_url})` : '';
+  $('home-backdrop').style.backgroundImage = m.poster_url ? `url(${getBackdropUrl(m)})` : '';
   $('home-htitle').textContent = m.title || '';
   $('home-rating').textContent = `★ ${parseFloat(m.vote_average||0).toFixed(1)}`;
   $('home-genres').textContent = (m.genres||'').split(',').slice(0,3).join(' · ');
@@ -1006,7 +1025,7 @@ function renderTopRated() {
     const year   = (m.release_date||m.year||'').slice(0,4);
     const rating = parseFloat(m.vote_average||0).toFixed(1);
     const genres = (m.genres||'').split(',').slice(0,2).join(' · ');
-    return `<div class="top-rated-item" onmouseenter="trHover('${m.poster_url||''}')" onclick="openMovieObj(movieRegistry[${getMovieIdx(m)}])">
+    return `<div class="top-rated-item" onmouseenter="trHover(movieRegistry[${getMovieIdx(m)}])" onclick="openMovieObj(movieRegistry[${getMovieIdx(m)}])">
       <div class="tr-rank">${String(i+1).padStart(2,'0')}</div>
       ${m.poster_url?`<img src="${m.poster_url}" class="tr-poster" onerror="this.style.opacity=0">`:'<div class="tr-poster" style="display:flex;align-items:center;justify-content:center">🎬</div>'}
       <div class="tr-info">
@@ -1018,7 +1037,7 @@ function renderTopRated() {
   }).join('');
 }
 
-function trHover(url) { if (url) $('top-rated-bg').style.backgroundImage = `url(${url})`; }
+function trHover(m) { const url = getBackdropUrl(m); if (url) $('top-rated-bg').style.backgroundImage = `url(${url})`; }
 
 // ══════════════════════════════════════════════════════════
 // AWARDS
@@ -1998,6 +2017,7 @@ async function loadAllData() {
       title,
       description: getCol(row, 'Description', 'description', 'Overview', 'overview', 'Plot', 'plot'),
       poster_url:  getCol(row, 'Poster URL', 'poster_url', 'Poster', 'poster', 'Image', 'image'),
+      backdrop_url: getCol(row, 'Backdrop URL', 'backdrop_url', 'Backdrop', 'backdrop', 'backdrop_path', 'Fanart', 'fanart'),
       days: {}
     };
 
