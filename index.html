@@ -230,86 +230,17 @@ html,body{height:100%;font-family:'Outfit',sans-serif;background:var(--bg);color
 .time-badge{font-size:10px;background:var(--gold-dim);border:1px solid rgba(201,168,76,0.3);color:var(--gold);padding:2px 8px;border-radius:4px}
 
 /* ── Top Rated Page ── */
-#top-rated-bg{position:fixed;top:0;left:0;right:0;bottom:0;background-size:cover;background-position:center center;filter:brightness(0.22) saturate(0.7) contrast(1.2);transition:background-image 0.6s ease;pointer-events:none;z-index:0}
+#top-rated-bg{position:fixed;top:0;left:0;right:0;bottom:0;background-size:cover;background-position:center center;filter:brightness(0.3) saturate(0.85) contrast(1.15);transition:background-image 0.5s ease;pointer-events:none;z-index:0}
 #page-top-rated .page-inner{position:relative;z-index:1}
+.top-rated-item{display:flex;align-items:center;gap:16px;padding:14px 28px;border-bottom:1px solid var(--border);cursor:pointer;transition:background 0.2s;position:relative}
+.top-rated-item:hover{background:rgba(255,255,255,0.03)}
+.tr-rank{font-family:'Cinzel',serif;font-size:18px;color:var(--text3);width:36px;flex-shrink:0}
+.tr-poster{width:54px;height:76px;border-radius:6px;object-fit:cover;border:1px solid var(--border);flex-shrink:0;background:var(--bg3)}
+.tr-info{flex:1}
+.tr-title{font-size:14px;color:var(--text);font-weight:500;margin-bottom:4px}
+.tr-meta{font-size:11px;color:var(--text2)}
+.tr-rating{font-size:18px;font-weight:600;color:var(--gold);flex-shrink:0}
 .year-filter-row{display:flex;gap:6px;padding:16px 28px;flex-wrap:wrap}
-
-/* Hero card — #1 spot */
-.tr-hero{
-  display:flex;gap:28px;margin:0 28px 24px;
-  background:linear-gradient(135deg,rgba(15,20,34,0.95),rgba(10,14,24,0.85));
-  border:1px solid var(--border2);border-radius:14px;overflow:hidden;
-  cursor:pointer;position:relative;min-height:220px;
-  transition:border-color 0.25s,transform 0.25s;
-}
-.tr-hero:hover{border-color:var(--gold);transform:translateY(-2px)}
-.tr-hero-poster{
-  width:148px;flex-shrink:0;position:relative;
-  background:var(--bg3);
-}
-.tr-hero-poster img{
-  width:100%;height:100%;object-fit:cover;display:block;
-}
-.tr-hero-badge{
-  position:absolute;top:10px;left:10px;
-  font-family:'Cinzel',serif;font-size:22px;font-weight:800;
-  color:var(--gold);text-shadow:0 2px 8px rgba(0,0,0,0.9);
-  background:rgba(0,0,0,0.55);padding:2px 10px;border-radius:6px;
-}
-.tr-hero-body{
-  flex:1;display:flex;flex-direction:column;justify-content:center;
-  padding:24px 24px 24px 0;gap:10px;
-}
-.tr-hero-crown{font-size:11px;letter-spacing:4px;color:var(--gold);text-transform:uppercase}
-.tr-hero-title{font-family:'Cinzel',serif;font-size:22px;color:#fff;line-height:1.2}
-.tr-hero-meta{font-size:12px;color:var(--text2);display:flex;gap:10px;flex-wrap:wrap}
-.tr-hero-rating{
-  display:inline-flex;align-items:center;gap:6px;
-  background:var(--gold-dim);border:1px solid var(--border2);
-  border-radius:30px;padding:5px 14px;
-  font-size:20px;font-weight:700;color:var(--gold);width:fit-content;
-}
-.tr-hero-overview{font-size:12px;color:var(--text2);line-height:1.65;max-width:480px;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
-
-/* Grid for ranks 2–50 */
-.tr-grid{
-  display:grid;
-  grid-template-columns:repeat(auto-fill,minmax(140px,1fr));
-  gap:14px;padding:0 28px 32px;
-}
-.tr-card{
-  cursor:pointer;position:relative;border-radius:10px;overflow:hidden;
-  background:var(--bg3);border:1px solid var(--border);
-  transition:transform 0.22s,border-color 0.22s,box-shadow 0.22s;
-  display:flex;flex-direction:column;
-}
-.tr-card:hover{transform:translateY(-5px);border-color:var(--gold);box-shadow:0 8px 30px rgba(0,0,0,0.5)}
-.tr-card-poster{
-  width:100%;padding-top:150%;position:relative;background:var(--bg4);
-}
-.tr-card-poster img{
-  position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:block;
-}
-.tr-card-rank{
-  position:absolute;top:8px;left:8px;
-  font-family:'Cinzel',serif;font-size:13px;font-weight:800;
-  color:#fff;text-shadow:0 1px 6px rgba(0,0,0,1);
-  background:rgba(0,0,0,0.6);padding:2px 7px;border-radius:5px;
-}
-.tr-card-score{
-  position:absolute;top:8px;right:8px;
-  background:rgba(0,0,0,0.72);border:1px solid rgba(201,168,76,0.5);
-  border-radius:5px;padding:2px 7px;
-  font-size:12px;font-weight:700;color:var(--gold);
-}
-.tr-card-shine{
-  position:absolute;inset:0;
-  background:linear-gradient(to top,rgba(5,8,16,0.92) 0%,rgba(5,8,16,0.3) 45%,transparent 70%);
-  pointer-events:none;
-}
-.tr-card-body{padding:8px 10px 10px;flex:1;background:var(--card)}
-.tr-card-title{font-size:11px;font-weight:600;color:var(--text);line-height:1.35;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;margin-bottom:3px}
-.tr-card-meta{font-size:10px;color:var(--text3)}
 
 /* ── Awards Page ── */
 .award-modes{display:flex;gap:10px;padding:20px 28px 0}
@@ -1087,68 +1018,23 @@ function renderTopRated() {
   if (trFilter === 'movie') data = data.filter(m => m.media_type === 'movie');
   if (trFilter === 'tv')    data = data.filter(m => m.media_type === 'tv');
   data.sort((a,b) => parseFloat(b.vote_average||0) - parseFloat(a.vote_average||0));
-  const slice = data.slice(0, 50);
+
   const list = $('top-rated-list');
-
-  // ── #1 Hero Card ──
-  let heroHTML = '';
-  if (slice.length) {
-    const m = slice[0];
-    const regM = movieRegistry[getMovieIdx(m)];
-    const title   = m.title || '';
-    const year    = (m.release_date||m.year||'').slice(0,4);
-    const rating  = parseFloat(m.vote_average||0).toFixed(1);
-    const genres  = (m.genres||'').split(',').slice(0,3).map(g=>g.trim()).join(' · ');
-    const overview= m.overview || m.description || '';
-    const type    = m.media_type==='tv' ? 'Series' : 'Movie';
-    heroHTML = `
-      <div class="tr-hero" onmouseenter="trHover(movieRegistry[${getMovieIdx(m)}])" onclick="openMovieObj(movieRegistry[${getMovieIdx(m)}])">
-        <div class="tr-hero-poster">
-          ${m.poster_url
-            ? `<img src="${m.poster_url}" alt="${safe(title)}" loading="lazy" onerror="this.style.display='none'">`
-            : `<div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;font-size:44px">🎬</div>`}
-          <div class="tr-hero-badge">#1</div>
-        </div>
-        <div class="tr-hero-body">
-          <div class="tr-hero-crown">🏆 &nbsp;Top Rated Of All Time</div>
-          <div class="tr-hero-title">${safe(title)}</div>
-          <div class="tr-hero-meta">
-            <span>${year}</span>
-            <span>${type}</span>
-            ${genres ? `<span>${safe(genres)}</span>` : ''}
-          </div>
-          <div class="tr-hero-rating">★ ${rating}</div>
-          ${overview ? `<div class="tr-hero-overview">${safe(overview)}</div>` : ''}
-        </div>
-      </div>`;
-  }
-
-  // ── Ranks 2–50 as poster cards ──
-  const gridHTML = `<div class="tr-grid">
-    ${slice.slice(1).map((m,i) => {
-      const rank    = i + 2;
-      const title   = m.title || '';
-      const year    = (m.release_date||m.year||'').slice(0,4);
-      const rating  = parseFloat(m.vote_average||0).toFixed(1);
-      const type    = m.media_type==='tv' ? '📺' : '🎬';
-      return `<div class="tr-card" onmouseenter="trHover(movieRegistry[${getMovieIdx(m)}])" onclick="openMovieObj(movieRegistry[${getMovieIdx(m)}])">
-        <div class="tr-card-poster">
-          ${m.poster_url
-            ? `<img src="${m.poster_url}" alt="${safe(title)}" loading="lazy" onerror="this.style.display='none'">`
-            : `<div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:36px">🎬</div>`}
-          <div class="tr-card-shine"></div>
-          <div class="tr-card-rank">${String(rank).padStart(2,'0')}</div>
-          <div class="tr-card-score">★ ${rating}</div>
-        </div>
-        <div class="tr-card-body">
-          <div class="tr-card-title">${safe(title)}</div>
-          <div class="tr-card-meta">${year} · ${type}</div>
-        </div>
-      </div>`;
-    }).join('')}
-  </div>`;
-
-  list.innerHTML = heroHTML + gridHTML;
+  list.innerHTML = data.slice(0,50).map((m,i) => {
+    const title  = m.title || '';
+    const year   = (m.release_date||m.year||'').slice(0,4);
+    const rating = parseFloat(m.vote_average||0).toFixed(1);
+    const genres = (m.genres||'').split(',').slice(0,2).join(' · ');
+    return `<div class="top-rated-item" onmouseenter="trHover(movieRegistry[${getMovieIdx(m)}])" onclick="openMovieObj(movieRegistry[${getMovieIdx(m)}])">
+      <div class="tr-rank">${String(i+1).padStart(2,'0')}</div>
+      ${m.poster_url?`<img src="${m.poster_url}" class="tr-poster" onerror="this.style.opacity=0">`:'<div class="tr-poster" style="display:flex;align-items:center;justify-content:center">🎬</div>'}
+      <div class="tr-info">
+        <div class="tr-title">${safe(title)}</div>
+        <div class="tr-meta">${safe(genres)} · ${year} · ${m.media_type==='tv'?'Series':'Movie'}</div>
+      </div>
+      <div class="tr-rating">★ ${rating}</div>
+    </div>`;
+  }).join('');
 }
 
 function trHover(m) { const url = getBackdropUrl(m); if (url) $('top-rated-bg').style.backgroundImage = `url(${url})`; }
