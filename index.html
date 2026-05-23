@@ -140,7 +140,7 @@ html,body{height:100%;font-family:'Outfit',sans-serif;background:var(--bg);color
 .movie-card:hover{transform:translateY(-4px)}
 .movie-card:hover .poster-wrap{border-color:var(--gold)}
 .poster-wrap{width:100%;padding-top:150%;border-radius:8px;border:1px solid var(--border);background:var(--bg3);overflow:hidden;display:block;position:relative}
-.poster-img{width:100%;height:100%;object-fit:cover;object-position:center top;border-radius:0;border:none;background:var(--bg3);display:block;position:absolute;inset:0;}
+.poster-img{width:100%;height:100%;object-fit:cover;border-radius:0;border:none;background:var(--bg3);display:block;position:absolute;inset:0;image-rendering:high-quality;}
 .poster-placeholder{width:100%;aspect-ratio:2/3;border-radius:8px;border:1px solid var(--border);background:var(--bg3);display:flex;align-items:center;justify-content:center;font-size:32px}
 .card-title{font-size:11px;color:var(--text);margin-top:6px;line-height:1.3;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .card-meta{font-size:10px;color:var(--text2);margin-top:2px}
@@ -162,8 +162,8 @@ html,body{height:100%;font-family:'Outfit',sans-serif;background:var(--bg);color
 .grid-6{display:grid;grid-template-columns:repeat(6,1fr);gap:12px;padding:0 28px 24px;align-items:start}
 
 /* ── Hero banner ── */
-.hero-banner{position:relative;width:2560px;height:800px;overflow:hidden;background:var(--bg2);padding-top:56px}
-.hero-backdrop{position:absolute;inset:0;background-size:contain;background-repeat:no-repeat;background-position:center center;filter:brightness(0.55) saturate(1.1);transition:background-image 0.4s ease}
+.hero-banner{position:relative;height:360px;overflow:hidden;background:var(--bg2);padding-top:56px}
+.hero-backdrop{position:absolute;inset:0;background-size:cover;background-position:center 20%;filter:brightness(0.6) saturate(1.15) contrast(1.05);transition:background-image 0.5s ease}
 .hero-gradient{position:absolute;inset:0;background:linear-gradient(to right,rgba(8,11,18,0.88) 35%,transparent),linear-gradient(to top,rgba(8,11,18,0.95) 0%,transparent 50%)}
 .hero-content{position:relative;padding:50px 48px 36px;display:flex;flex-direction:column;justify-content:flex-end;height:100%}
 .hero-tag{font-size:9px;letter-spacing:4px;color:var(--gold);text-transform:uppercase;margin-bottom:10px}
@@ -191,7 +191,7 @@ html,body{height:100%;font-family:'Outfit',sans-serif;background:var(--bg);color
 .detail-backdrop{position:absolute;inset:0;background-size:cover;background-position:center top;filter:brightness(0.3)}
 .detail-grad{position:absolute;inset:0;background:linear-gradient(to top,var(--bg2) 0%,transparent 60%)}
 .detail-content{position:relative;padding:20px 28px;display:flex;align-items:flex-end;gap:20px;height:100%}
-.detail-poster{width:80px;height:120px;border-radius:8px;border:2px solid var(--border2);object-fit:cover;object-position:center top;flex-shrink:0;background:var(--bg3)}
+.detail-poster{width:80px;height:120px;border-radius:8px;border:2px solid var(--border2);object-fit:cover;flex-shrink:0;background:var(--bg3)}
 .detail-info{flex:1}
 .detail-title{font-family:'Cinzel',serif;font-size:20px;color:#fff;margin-bottom:6px}
 .detail-meta{display:flex;gap:10px;font-size:11px;color:var(--text2);flex-wrap:wrap}
@@ -214,7 +214,7 @@ html,body{height:100%;font-family:'Outfit',sans-serif;background:var(--bg);color
 .egypt-card{background:var(--card);border:1px solid var(--border);border-radius:10px;overflow:hidden;margin:0 28px 16px;transition:border-color 0.2s}
 .egypt-card:hover{border-color:var(--border2)}
 .egypt-header{display:flex;gap:14px;padding:14px;cursor:pointer}
-.egypt-poster{width:60px;height:85px;border-radius:6px;object-fit:cover;object-position:center top;flex-shrink:0;background:var(--bg3)}
+.egypt-poster{width:60px;height:85px;border-radius:6px;object-fit:cover;flex-shrink:0;background:var(--bg3)}
 .egypt-info{flex:1}
 .egypt-title{font-size:14px;color:var(--text);font-weight:600;margin-bottom:4px}
 .egypt-desc{font-size:11px;color:var(--text2);line-height:1.5;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
@@ -230,12 +230,12 @@ html,body{height:100%;font-family:'Outfit',sans-serif;background:var(--bg);color
 .time-badge{font-size:10px;background:var(--gold-dim);border:1px solid rgba(201,168,76,0.3);color:var(--gold);padding:2px 8px;border-radius:4px}
 
 /* ── Top Rated Page ── */
-#top-rated-bg{position:fixed;top:0;left:0;right:0;bottom:0;background-size:cover;background-repeat:no-repeat;background-position:center center;filter:brightness(0.3) saturate(0.85) contrast(1.15);transition:background-image 0.4s ease;pointer-events:none;z-index:0}
+#top-rated-bg{position:fixed;top:0;left:0;right:0;bottom:0;background-size:cover;background-position:center center;filter:brightness(0.3) saturate(0.85) contrast(1.15);transition:background-image 0.5s ease;pointer-events:none;z-index:0}
 #page-top-rated .page-inner{position:relative;z-index:1}
 .top-rated-item{display:flex;align-items:center;gap:16px;padding:14px 28px;border-bottom:1px solid var(--border);cursor:pointer;transition:background 0.2s;position:relative}
 .top-rated-item:hover{background:rgba(255,255,255,0.03)}
 .tr-rank{font-family:'Cinzel',serif;font-size:18px;color:var(--text3);width:36px;flex-shrink:0}
-.tr-poster{width:54px;height:81px;border-radius:6px;object-fit:cover;object-position:center top;border:1px solid var(--border);flex-shrink:0;background:var(--bg3)}
+.tr-poster{width:54px;height:76px;border-radius:6px;object-fit:cover;border:1px solid var(--border);flex-shrink:0;background:var(--bg3)}
 .tr-info{flex:1}
 .tr-title{font-size:14px;color:var(--text);font-weight:500;margin-bottom:4px}
 .tr-meta{font-size:11px;color:var(--text2)}
@@ -426,7 +426,7 @@ html,body{height:100%;font-family:'Outfit',sans-serif;background:var(--bg);color
     <!-- ═══════════════ HOME PAGE ═══════════════ -->
     <div class="page active" id="page-home">
       <div class="hero-banner" id="home-hero">
-        <div class="hero-backdrop" id="home-backdrop"></div></div>
+        <div class="hero-backdrop" id="home-backdrop"></div>
         <div class="hero-gradient"></div>
         <div class="hero-content">
           <div class="hero-tag" id="home-tag">Now Trending</div>
@@ -817,19 +817,14 @@ function getPosterUrl(m) {
   return p;
 }
 
-// Convert any TMDB poster URL → wide backdrop URL
-// Returns {url, isPortrait} so callers can adjust background-size
+// Convert any TMDB poster URL → high-res backdrop URL
 function getBackdropUrl(m) {
   const bd = m.backdrop_url || m.backdrop || m.backdrop_path || '';
-  if (bd && bd.includes('image.tmdb.org')) {
-    return { url: bd.replace(/\/t\/p\/[^\/]+\//, '/t/p/w1280/'), isPortrait: false };
-  }
-  if (bd) return { url: bd, isPortrait: false };
+  if (bd) return bd.replace(/\/t\/p\/[^\/]+\//, '/t/p/original/');
   const p = m.poster_url || '';
-  if (p && p.includes('image.tmdb.org')) {
-    return { url: p.replace(/\/t\/p\/[^\/]+\//, '/t/p/w780/'), isPortrait: true };
-  }
-  return { url: p, isPortrait: true };
+  if (p && p.includes('image.tmdb.org'))
+    return p.replace(/\/t\/p\/[^\/]+\//, '/t/p/original/');
+  return p;
 }
 
 function movieCardHTML(m, onclick='') {
@@ -923,30 +918,13 @@ function initHome() {
 }
 
 function updateHero(m) {
-  const bd = m.backdrop_url || m.backdrop || m.backdrop_path || '';
-  const poster = m.poster_url || '';
-  let imgUrl = '';
-  if (bd && bd.includes('image.tmdb.org'))             imgUrl = bd.replace(/\/t\/p\/[^\/]+\//, '/t/p/original/');
-  else if (bd)                                          imgUrl = bd;
-  else if (poster && poster.includes('image.tmdb.org')) imgUrl = poster.replace(/\/t\/p\/[^\/]+\//, '/t/p/original/');
-  else                                                  imgUrl = poster;
-
-  const el = $('home-backdrop');
-  if (imgUrl) {
-    el.style.backgroundImage    = `url(${imgUrl})`;
-    el.style.backgroundSize     = 'contain';
-    el.style.backgroundPosition = 'center center';
-    el.style.backgroundRepeat   = 'no-repeat';
-  } else {
-    el.style.backgroundImage = '';
-  }
-
+  $('home-backdrop').style.backgroundImage = m.poster_url ? `url(${getBackdropUrl(m)})` : '';
   $('home-htitle').textContent = m.title || '';
   $('home-rating').textContent = `★ ${parseFloat(m.vote_average||0).toFixed(1)}`;
   $('home-genres').textContent = (m.genres||'').split(',').slice(0,3).join(' · ');
-  $('home-year').textContent   = (m.release_date||'').slice(0,4);
+  $('home-year').textContent = (m.release_date||'').slice(0,4);
   const trailer = $('home-trailer');
-  if (m.trailer_url) { trailer.href = m.trailer_url; trailer.style.display = ''; }
+  if (m.trailer_url) { trailer.href = m.trailer_url; trailer.style.display=''; }
   else trailer.style.display = 'none';
 }
 
@@ -1049,7 +1027,7 @@ function renderTopRated() {
     const genres = (m.genres||'').split(',').slice(0,2).join(' · ');
     return `<div class="top-rated-item" onmouseenter="trHover(movieRegistry[${getMovieIdx(m)}])" onclick="openMovieObj(movieRegistry[${getMovieIdx(m)}])">
       <div class="tr-rank">${String(i+1).padStart(2,'0')}</div>
-      ${m.poster_url?`<img src="${getPosterUrl(m)}" class="tr-poster" onerror="this.style.opacity=0">`:'<div class="tr-poster" style="display:flex;align-items:center;justify-content:center">🎬</div>'}
+      ${m.poster_url?`<img src="${m.poster_url}" class="tr-poster" onerror="this.style.opacity=0">`:'<div class="tr-poster" style="display:flex;align-items:center;justify-content:center">🎬</div>'}
       <div class="tr-info">
         <div class="tr-title">${safe(title)}</div>
         <div class="tr-meta">${safe(genres)} · ${year} · ${m.media_type==='tv'?'Series':'Movie'}</div>
@@ -1059,29 +1037,7 @@ function renderTopRated() {
   }).join('');
 }
 
-function trHover(m) {
-  const bd = m.backdrop_url || m.backdrop || m.backdrop_path || '';
-  const poster = m.poster_url || '';
-  let imgUrl = '';
-  if (bd && bd.includes('image.tmdb.org'))       imgUrl = bd.replace(/\/t\/p\/[^\/]+\//, '/t/p/w1280/');
-  else if (bd)                                    imgUrl = bd;
-  else if (poster && poster.includes('image.tmdb.org')) imgUrl = poster.replace(/\/t\/p\/[^\/]+\//, '/t/p/original/');
-  else                                            imgUrl = poster;
-
-  const el = $('top-rated-bg');
-  if (!imgUrl) { el.style.backgroundImage = ''; return; }
-  const tmp = new Image();
-  tmp.onload = function() {
-    const iW = tmp.naturalWidth, iH = tmp.naturalHeight;
-    const pos = (iH > iW) ? 'center 15%' : 'center center';
-    el.style.backgroundImage    = `url(${imgUrl})`;
-    el.style.backgroundSize     = 'cover';
-    el.style.backgroundPosition = pos;
-    el.style.backgroundRepeat   = 'no-repeat';
-  };
-  tmp.onerror = function() { el.style.backgroundImage = ''; };
-  tmp.src = imgUrl;
-}
+function trHover(m) { const url = getBackdropUrl(m); if (url) $('top-rated-bg').style.backgroundImage = `url(${url})`; }
 
 // ══════════════════════════════════════════════════════════
 // AWARDS
