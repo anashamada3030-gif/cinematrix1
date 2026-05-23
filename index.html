@@ -1431,7 +1431,7 @@ async function fetchNews(category) {
     title:     item.title || '',
     link:      item.url   || '#',
     source:    item.source?.name || '',
-    date:      item.publishedAt?.slice(0,10) || '',
+    date:      item.publishedAt || '',
     snippet:   item.description || '',
     thumbnail: item.image || '',
     emoji:     NEWS_EMOJIS[i % NEWS_EMOJIS.length]
