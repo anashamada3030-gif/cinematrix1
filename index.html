@@ -300,7 +300,7 @@ html,body{height:100%;font-family:'Outfit',sans-serif;background:var(--bg);color
       <div class="nav-item active" onclick="nav('home',this)"><span class="nav-icon">⌂</span>Home</div>
       <div class="nav-item" onclick="nav('egypt',this)"><span class="nav-icon">🎭</span>On Now (Egypt)</div>
       <div class="nav-item" onclick="nav('top-rated',this)"><span class="nav-icon">⭐</span>Top Rated</div>
-      <div class="nav-item" onclick="nav('awards',this)"><span class="nav-icon">🏆</span>Oscar Timeline</div>
+
       <div class="nav-item" onclick="nav('year',this)"><span class="nav-icon">📅</span>Movies of Year</div>
     </div>
     <div class="nav-group">
@@ -410,17 +410,7 @@ html,body{height:100%;font-family:'Outfit',sans-serif;background:var(--bg);color
       </div>
     </div>
 
-    <!-- ═══════════════ AWARD WINNERS ═══════════════ -->
-    <div class="page" id="page-awards" style="min-height:unset;height:100vh">
-      <iframe
-        id="awards-iframe"
-        src="oscar-timeline-3d.html"
-        title="Oscar Awards Timeline"
-        loading="lazy"
-        allowfullscreen
-        style="width:100%;height:100%;border:none;display:block">
-      </iframe>
-    </div>
+    <!-- Oscar Timeline merged into Time Machine -->
 
     <!-- ═══════════════ MOVIES OF YEAR ═══════════════ -->
     <div class="page" id="page-year">
@@ -578,20 +568,40 @@ html,body{height:100%;font-family:'Outfit',sans-serif;background:var(--bg);color
       </iframe>
     </div>
 
-    <!-- ═══════════════ TIME MACHINE — inline (timemachine3d.js) ═══════════════ -->
-    <div class="page" id="page-timemachine" style="min-height:unset;height:100vh;display:none;flex-direction:column;background:var(--bg)">
-      <div class="page-title-bar" style="flex-shrink:0">
-        <div class="page-title">⟳ Cinema Time Machine</div>
-        <div class="page-sub">Travel through Oscar &amp; award-winning films across the decades</div>
+    <!-- ═══════════════ TIME MACHINE — Oscar Timeline Design ═══════════════ -->
+    <div class="page" id="page-timemachine" style="min-height:unset;height:100vh;display:none;flex-direction:column;background:#03030A;overflow:hidden;position:relative">
+      <!-- Grain overlay -->
+      <div style="position:absolute;inset:0;pointer-events:none;z-index:1;opacity:.13;background-image:url(&quot;data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='300' height='300'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.75' numOctaves='4' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E&quot;)"></div>
+      <!-- Radial bg gradients -->
+      <div style="position:absolute;inset:0;pointer-events:none;z-index:0;background-image:radial-gradient(ellipse 70% 40% at 50% 0%,rgba(201,162,39,0.08) 0%,transparent 70%),radial-gradient(ellipse 100% 60% at 50% 100%,rgba(10,10,40,0.85) 0%,transparent 70%)"></div>
+
+      <!-- HEADER -->
+      <div style="text-align:center;padding:1.2rem 0 0.5rem;position:relative;z-index:10;flex-shrink:0">
+        <div style="font-family:'Cinzel',serif;font-size:.58rem;letter-spacing:.55em;color:#C9A227;text-transform:uppercase;margin-bottom:.2rem;opacity:.85">Academy of Motion Picture Arts &amp; Sciences</div>
+        <h1 style="font-family:'Cinzel',serif;font-size:1.6rem;font-weight:900;color:#F0EDE6;letter-spacing:.04em;line-height:1;margin-bottom:.1rem">Cinema Time Machine</h1>
+        <div id="tm-hdr-sub" style="font-size:.7rem;color:#8A8A9A;letter-spacing:.15em">Award-Winning Films Across the Decades</div>
+        <div style="width:44px;height:1px;background:linear-gradient(90deg,transparent,#C9A227,transparent);margin:.5rem auto"></div>
       </div>
-      <div style="padding:0 28px 12px;display:flex;gap:8px;flex-shrink:0">
-        <button class="tl-mode-btn award-mode-btn active" onclick="setTlMode('Oscar',this)">🏆 Oscar</button>
-        <button class="tl-mode-btn award-mode-btn" onclick="setTlMode('GoldenGlobe',this)">🌟 Golden Globe</button>
-        <button class="tl-mode-btn award-mode-btn" onclick="setTlMode('All',this)">✨ All Awards</button>
+
+      <!-- MODE TOGGLE -->
+      <div style="display:flex;justify-content:center;margin:.2rem 0 0;position:relative;z-index:10;flex-shrink:0">
+        <div style="display:flex;background:rgba(255,255,255,.03);border:1px solid rgba(201,162,39,.2);border-radius:50px;padding:3px;gap:2px">
+          <button class="tl-mode-btn" onclick="setTlMode('Oscar',this)" style="font-family:'Cinzel',serif;font-size:.6rem;font-weight:600;letter-spacing:.15em;padding:.35rem 1.2rem;border-radius:50px;border:none;background:#C9A227;color:#000;cursor:pointer;transition:all .3s">OSCAR</button>
+          <button class="tl-mode-btn" onclick="setTlMode('GoldenGlobe',this)" style="font-family:'Cinzel',serif;font-size:.6rem;font-weight:600;letter-spacing:.15em;padding:.35rem 1.2rem;border-radius:50px;border:none;background:transparent;color:#8A8A9A;cursor:pointer;transition:all .3s">GOLDEN GLOBE</button>
+          <button class="tl-mode-btn" onclick="setTlMode('All',this)" style="font-family:'Cinzel',serif;font-size:.6rem;font-weight:600;letter-spacing:.15em;padding:.35rem 1.2rem;border-radius:50px;border:none;background:transparent;color:#8A8A9A;cursor:pointer;transition:all .3s">ALL AWARDS</button>
+        </div>
       </div>
-      <div id="timeline-canvas-wrap" style="flex:1;margin:0 28px 8px;border-radius:12px;overflow:hidden"></div>
-      <div class="tl-scroll-hint" style="text-align:center;font-size:11px;color:var(--text3);padding:8px 28px 20px;flex-shrink:0">
-        ← → Arrow keys  •  Click arrows  •  Click a card to open
+
+      <!-- CAROUSEL WRAP -->
+      <div id="timeline-canvas-wrap" style="flex:1;position:relative;z-index:10;min-height:0"></div>
+
+      <div class="tl-scroll-hint" style="text-align:center;font-size:11px;color:#8A8A9A;padding:4px 28px 12px;flex-shrink:0;position:relative;z-index:10">
+        ← → keys  •  click arrows  •  drag  •  click poster to open
+      </div>
+
+      <!-- Bottom progress bar -->
+      <div id="tm-outer-prog" style="height:2px;background:rgba(255,255,255,.04);flex-shrink:0;position:relative;z-index:10">
+        <div id="tm-outer-prog-fill" style="height:100%;background:#C9A227;transition:width .4s ease;width:0%"></div>
       </div>
     </div>
 
@@ -615,8 +625,9 @@ html,body{height:100%;font-family:'Outfit',sans-serif;background:var(--bg);color
     <div class="page" id="page-analytics" style="min-height:unset;height:100vh">
       <iframe
         id="analytics-iframe"
-        src="cinamatrix_analytics_v2.html"
+        src="cinematrix_analytics_v2.html"
         title="CineMatrix Analytics"
+        loading="lazy"
         allowfullscreen
         style="width:100%;height:100%;border:none;display:block">
       </iframe>
@@ -710,7 +721,6 @@ function nav(page, el) {
   if (page === 'news') renderNews();
   if (page === 'recommend') initRec();
   if (page === 'year') initYear();
-  if (page === 'analytics') { const f=$('analytics-iframe'); if(!f.src||f.src==='about:blank') f.src='cinematrix_analytics_v2.html'; }
 
   // Galaxy & TimeMachine are iframes — no JS init needed here.
   // The iframes load their own standalone HTML files:
@@ -1406,9 +1416,9 @@ function renderWorldTopList() {
 // ══════════════════════════════════════════════════════════
 // Local: Start proxy: python news_proxy.py
 // Production: Runs on Vercel serverless functions
-// ART NEWS (via Cloudflare Worker)
-// ══════════════════════════════════════════════════════════
-const WORKER_URL = 'https://red-mountain-e437.s-anas-mostafa.workers.dev';
+const PROXY_URL = window.location.hostname === 'localhost' 
+  ? 'http://localhost:8888/news'
+  : '/api/news';
 
 const NEWS_QUERIES = {
   all:         'أفلام سينما مسلسلات 2026',
@@ -1424,16 +1434,18 @@ let newsCategory = 'all', newsCache = {};
 async function fetchNews(category) {
   if (newsCache[category]) return newsCache[category];
   const query = NEWS_QUERIES[category] || NEWS_QUERIES.all;
-  const res = await fetch(`${WORKER_URL}?q=${encodeURIComponent(query)}&hl=ar&gl=eg`);
-  if (!res.ok) throw new Error(`Worker error ${res.status}`);
+  const params = new URLSearchParams({ q: query, num: '12', hl: 'ar', gl: 'eg' });
+  const res = await fetch(`${PROXY_URL}?${params}`);
+  if (!res.ok) throw new Error(`Proxy error ${res.status} — is news_proxy.py running?`);
   const data = await res.json();
-  const articles = (data.articles || []).map((item, i) => ({
+  if (data.error) throw new Error(data.error);
+  const articles = (data.news_results || []).map((item, i) => ({
     title:     item.title || '',
-    link:      item.url   || '#',
-    source:    item.source?.name || '',
-    date:      item.publishedAt || '',
-    snippet:   item.description || '',
-    thumbnail: item.image || '',
+    link:      item.link  || '#',
+    source:    item.source || '',
+    date:      item.date  || '',
+    snippet:   item.snippet || '',
+    thumbnail: item.thumbnail || '',
     emoji:     NEWS_EMOJIS[i % NEWS_EMOJIS.length]
   }));
   newsCache[category] = articles;
