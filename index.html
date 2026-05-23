@@ -162,8 +162,8 @@ html,body{height:100%;font-family:'Outfit',sans-serif;background:var(--bg);color
 .grid-6{display:grid;grid-template-columns:repeat(6,1fr);gap:12px;padding:0 28px 24px;align-items:start}
 
 /* ── Hero banner ── */
-.hero-banner{position:relative;height:420px;overflow:hidden;background:var(--bg2);padding-top:56px}
-.hero-backdrop{position:absolute;inset:0;background-size:cover;background-repeat:no-repeat;background-position:center center;filter:brightness(0.55) saturate(1.1);transition:background-image 0.4s ease}
+.hero-banner{position:relative;width:2560px;height:800px;overflow:hidden;background:var(--bg2);padding-top:56px}
+.hero-backdrop{position:absolute;inset:0;background-size:contain;background-repeat:no-repeat;background-position:center center;filter:brightness(0.55) saturate(1.1);transition:background-image 0.4s ease}
 .hero-gradient{position:absolute;inset:0;background:linear-gradient(to right,rgba(8,11,18,0.88) 35%,transparent),linear-gradient(to top,rgba(8,11,18,0.95) 0%,transparent 50%)}
 .hero-content{position:relative;padding:50px 48px 36px;display:flex;flex-direction:column;justify-content:flex-end;height:100%}
 .hero-tag{font-size:9px;letter-spacing:4px;color:var(--gold);text-transform:uppercase;margin-bottom:10px}
@@ -926,28 +926,17 @@ function updateHero(m) {
   const bd = m.backdrop_url || m.backdrop || m.backdrop_path || '';
   const poster = m.poster_url || '';
   let imgUrl = '';
-  if (bd && bd.includes('image.tmdb.org'))       imgUrl = bd.replace(/\/t\/p\/[^\/]+\//, '/t/p/w1280/');
-  else if (bd)                                    imgUrl = bd;
+  if (bd && bd.includes('image.tmdb.org'))             imgUrl = bd.replace(/\/t\/p\/[^\/]+\//, '/t/p/original/');
+  else if (bd)                                          imgUrl = bd;
   else if (poster && poster.includes('image.tmdb.org')) imgUrl = poster.replace(/\/t\/p\/[^\/]+\//, '/t/p/original/');
-  else                                            imgUrl = poster;
+  else                                                  imgUrl = poster;
 
   const el = $('home-backdrop');
   if (imgUrl) {
-    const tmp = new Image();
-    tmp.onload = function() {
-      const bannerW = $('home-hero').offsetWidth || window.innerWidth;
-      const bannerH = 420;
-      const iW = tmp.naturalWidth, iH = tmp.naturalHeight;
-      // Always cover — but position smartly
-      // Portrait poster: center the subject (top 40% of image has faces)
-      const pos = (iH > iW) ? 'center 20%' : 'center center';
-      el.style.backgroundImage    = `url(${imgUrl})`;
-      el.style.backgroundSize     = 'cover';
-      el.style.backgroundPosition = pos;
-      el.style.backgroundRepeat   = 'no-repeat';
-    };
-    tmp.onerror = function() { el.style.backgroundImage = ''; };
-    tmp.src = imgUrl;
+    el.style.backgroundImage    = `url(${imgUrl})`;
+    el.style.backgroundSize     = 'contain';
+    el.style.backgroundPosition = 'center center';
+    el.style.backgroundRepeat   = 'no-repeat';
   } else {
     el.style.backgroundImage = '';
   }
