@@ -1406,9 +1406,8 @@ function renderWorldTopList() {
 // ══════════════════════════════════════════════════════════
 // Local: Start proxy: python news_proxy.py
 // Production: Runs on Vercel serverless functions
-const PROXY_URL = window.location.hostname === 'localhost' 
-  ? 'http://localhost:8888/news'
-  : '/api/news';
+const SERPAPI_KEY = 'your_serpapi_key_here';
+const PROXY_URL = null; // handled directly below
 
 const NEWS_QUERIES = {
   all:         'أفلام سينما مسلسلات 2026',
