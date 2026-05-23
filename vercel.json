@@ -1,9 +1,5 @@
 {
   "buildCommand": "echo 'Build successful'",
-  "framework": "static",
-  "env": {
-    "SERPAPI_KEY": "@serpapi_key"
-  },
   "functions": {
     "api/news.py": {
       "runtime": "python3.9",
