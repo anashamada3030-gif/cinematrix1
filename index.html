@@ -1430,7 +1430,7 @@ async function fetchNews(category) {
     max: '12',
     sortby: 'publishedAt'
   });
-  const res = await fetch(`https://gnews.io/api/v4/search?${params}`);
+  const res = await fetch(`https://red-mountain-e437.s-anas-mostafa.workers.dev?q=${encodeURIComponent(query)}`);
   if (!res.ok) throw new Error(`GNews error ${res.status}`);
   const data = await res.json();
   const articles = (data.articles || []).map((item, i) => ({
