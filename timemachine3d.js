@@ -1,7 +1,9 @@
 /**
- * CinaMatrix — Time Machine (Oscar Timeline Edition v2)
- * CSS 3D carousel — matches oscar-timeline-3d.html exactly.
- * Fix: staggered eager loading, no lazy/display:none conflicts.
+ * CinaMatrix — Time Machine (Full Oscar Timeline Design v3)
+ * - Full oscar-timeline-3d.html visual design
+ * - Staggered eager loading (no lazy/display:none conflict)
+ * - Click on active card → openMovieObj() movie detail modal
+ * - Mode toggle synced with pill buttons in page HTML
  */
 (function () {
   "use strict";
@@ -12,142 +14,151 @@
     @import url('https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600;900&family=Raleway:wght@300;400;500;600&display=swap');
 
     #tm-root {
-      position:relative; width:100%; height:100%;
-      display:flex; flex-direction:column; overflow:hidden;
-      background:#03030A;
-      background-image:
-        radial-gradient(ellipse 70% 40% at 50% 0%, rgba(201,162,39,.07) 0%, transparent 70%),
-        radial-gradient(ellipse 100% 60% at 50% 100%, rgba(10,10,40,.8) 0%, transparent 70%);
-      font-family:'Raleway',sans-serif;
-      border-radius:inherit;
-      color:#F0EDE6;
+      position: relative; width: 100%; height: 100%;
+      display: flex; flex-direction: column; overflow: hidden;
+      font-family: 'Raleway', sans-serif;
+      color: #F0EDE6;
     }
-    #tm-root::before {
-      content:''; position:absolute; inset:0; pointer-events:none; z-index:99; opacity:.1;
-      background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='200'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.75' numOctaves='4' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
-    }
+
     #tm-vp {
-      flex:1; position:relative; min-height:0;
-      perspective:1200px; perspective-origin:50% 50%;
-      cursor:grab; overflow:hidden;
+      flex: 1; position: relative; min-height: 0;
+      perspective: 1300px; perspective-origin: 50% 50%;
+      cursor: grab; overflow: hidden;
     }
-    #tm-vp.tm-drag { cursor:grabbing; }
-    #tm-track { position:relative; width:100%; height:100%; transform-style:preserve-3d; }
+    #tm-vp.tm-drag { cursor: grabbing; }
+    #tm-track { position: relative; width: 100%; height: 100%; transform-style: preserve-3d; }
 
     .tm-card {
-      position:absolute;
-      width:160px; height:240px;
-      left:50%; top:50%;
-      margin-left:-80px; margin-top:-120px;
-      border-radius:10px; overflow:hidden;
-      border:1px solid rgba(255,255,255,.06);
-      transition:transform .5s cubic-bezier(.25,.46,.45,.94), opacity .5s ease, box-shadow .5s ease;
-      cursor:pointer; background:#111;
+      position: absolute;
+      width: 200px; height: 300px;
+      left: 50%; top: 50%;
+      margin-left: -100px; margin-top: -150px;
+      border-radius: 10px; overflow: hidden;
+      border: 1px solid rgba(255,255,255,.05);
+      transition: transform .5s cubic-bezier(.25,.46,.45,.94), opacity .5s ease, box-shadow .5s ease;
+      cursor: pointer;
     }
     .tm-card.tm-act {
-      box-shadow:0 0 45px rgba(201,162,39,.25), 0 20px 55px rgba(0,0,0,.8);
-      border-color:rgba(201,162,39,.4);
+      box-shadow: 0 0 50px rgba(201,162,39,.22), 0 25px 60px rgba(0,0,0,.7);
+      border-color: rgba(201,162,39,.35);
     }
-    .tm-card.tm-live { transition:none; }
+    .tm-card.tm-live { transition: none; }
 
-    /* Poster image — always block, opacity fade-in */
     .tm-card-img {
-      position:absolute; inset:0;
-      width:100%; height:100%; object-fit:cover;
-      opacity:0; transition:opacity .4s ease;
-      z-index:2;
+      position: absolute; inset: 0;
+      width: 100%; height: 100%; object-fit: cover;
+      opacity: 0; transition: opacity .4s ease;
+      z-index: 2;
     }
-    .tm-card-img.loaded { opacity:1; }
+    .tm-card-img.loaded { opacity: 1; }
 
-    /* Gradient fallback — always visible behind image */
     .tm-card-fb {
-      position:absolute; inset:0; z-index:1;
-      display:flex; flex-direction:column; justify-content:flex-end;
-      padding:.8rem;
+      position: absolute; inset: 0; z-index: 1;
+      display: flex; flex-direction: column; justify-content: flex-end;
+      padding: 1rem;
     }
 
-    /* Bottom info bar — always on top */
     .tm-card-bot {
-      position:absolute; bottom:0; left:0; right:0; z-index:3;
-      padding:.6rem .8rem;
-      background:linear-gradient(to top, rgba(0,0,0,.95) 0%, rgba(0,0,0,.6) 60%, transparent 100%);
+      position: absolute; bottom: 0; left: 0; right: 0; z-index: 3;
+      padding: .7rem .9rem;
+      background: linear-gradient(to top, rgba(0,0,0,.92) 0%, rgba(0,0,0,.55) 55%, transparent 100%);
     }
     .tm-card-yr {
-      font-family:'Cinzel',serif; font-size:.52rem;
-      letter-spacing:.25em; color:#C9A227; display:block; margin-bottom:.1rem;
+      font-family: 'Cinzel', serif; font-size: .58rem;
+      letter-spacing: .25em; color: #C9A227; display: block; margin-bottom: .15rem;
     }
     .tm-card-ttl {
-      font-family:'Cinzel',serif; font-size:.64rem;
-      font-weight:600; color:#fff; line-height:1.25; display:block;
+      font-family: 'Cinzel', serif; font-size: .72rem;
+      font-weight: 600; color: #fff; line-height: 1.3; display: block;
     }
 
     #tm-nav {
-      display:flex; align-items:center; gap:1rem;
-      justify-content:center; padding:.45rem 0;
-      flex-shrink:0; position:relative; z-index:10;
+      display: flex; align-items: center; gap: 1.2rem;
+      justify-content: center; padding: .5rem 0;
+      flex-shrink: 0; position: relative; z-index: 10;
     }
     .tm-nav-btn {
-      width:32px; height:32px; border-radius:50%;
-      border:1px solid rgba(201,162,39,.3); background:transparent;
-      color:#C9A227; font-size:.9rem; cursor:pointer;
-      display:flex; align-items:center; justify-content:center;
-      transition:all .2s;
+      width: 36px; height: 36px; border-radius: 50%;
+      border: 1px solid rgba(201,162,39,.3); background: transparent;
+      color: #C9A227; font-size: 1rem; cursor: pointer;
+      display: flex; align-items: center; justify-content: center;
+      transition: all .2s;
     }
-    .tm-nav-btn:hover { background:rgba(201,162,39,.12); border-color:#C9A227; }
+    .tm-nav-btn:hover { background: rgba(201,162,39,.12); border-color: #C9A227; }
     #tm-cnt {
-      font-family:'Cinzel',serif; font-size:.6rem;
-      color:#8A8A9A; letter-spacing:.1em; min-width:42px; text-align:center;
+      font-family: 'Cinzel', serif; font-size: .65rem;
+      color: #8A8A9A; letter-spacing: .12em; min-width: 48px; text-align: center;
     }
 
     #tm-dots {
-      display:flex; justify-content:center; gap:5px;
-      padding:.25rem 1rem; flex-wrap:wrap;
-      max-width:90%; margin:0 auto;
-      flex-shrink:0; position:relative; z-index:10;
+      display: flex; justify-content: center; gap: 5px;
+      padding: .4rem 1rem; flex-wrap: wrap;
+      max-width: 400px; margin: 0 auto;
+      flex-shrink: 0; position: relative; z-index: 10;
     }
     .tm-dot {
-      width:5px; height:5px; border-radius:50%;
-      background:rgba(255,255,255,.12); cursor:pointer;
-      transition:all .3s; flex-shrink:0;
+      width: 5px; height: 5px; border-radius: 50%;
+      background: rgba(255,255,255,.1); cursor: pointer;
+      transition: all .3s; flex-shrink: 0;
     }
-    .tm-dot.on { background:#C9A227; transform:scale(1.6); }
+    .tm-dot.on { background: #C9A227; transform: scale(1.6); }
 
     #tm-detail {
-      padding:.5rem 1.5rem .7rem; text-align:center;
-      flex-shrink:0; position:relative; z-index:10;
+      padding: .8rem 2rem 1rem; text-align: center;
+      flex-shrink: 0; position: relative; z-index: 10;
     }
-    #tm-di { transition:opacity .25s ease, transform .25s ease; }
-    #tm-di.out { opacity:0; transform:translateY(6px); }
+    #tm-di { transition: opacity .28s ease, transform .28s ease; }
+    #tm-di.out { opacity: 0; transform: translateY(7px); }
     #tm-dyr {
-      font-family:'Cinzel',serif; font-size:.55rem;
-      letter-spacing:.4em; color:#C9A227; margin-bottom:.2rem;
+      font-family: 'Cinzel', serif; font-size: .6rem;
+      letter-spacing: .4em; color: #C9A227; margin-bottom: .3rem;
     }
     #tm-dttl {
-      font-family:'Cinzel',serif; font-size:1.15rem;
-      font-weight:900; color:#F0EDE6; line-height:1.2; margin-bottom:.25rem;
+      font-family: 'Cinzel', serif; font-size: 1.5rem;
+      font-weight: 900; color: #F0EDE6; line-height: 1.2; margin-bottom: .35rem;
     }
     #tm-dbdg {
-      display:inline-flex; align-items:center; gap:.3rem;
-      background:rgba(201,162,39,.1); border:1px solid rgba(201,162,39,.25);
-      border-radius:20px; padding:.18rem .75rem;
-      font-family:'Cinzel',serif; font-size:.58rem; letter-spacing:.07em;
-      color:#C9A227; margin-bottom:.25rem;
+      display: inline-flex; align-items: center; gap: .35rem;
+      background: rgba(201,162,39,.1); border: 1px solid rgba(201,162,39,.28);
+      border-radius: 20px; padding: .22rem .9rem;
+      font-family: 'Cinzel', serif; font-size: .62rem; letter-spacing: .08em;
+      color: #C9A227; margin-bottom: .4rem;
     }
-    #tm-dmeta { font-size:.68rem; color:#8A8A9A; letter-spacing:.03em; }
+    #tm-dmeta { font-size: .75rem; color: #8A8A9A; margin-bottom: .35rem; letter-spacing: .04em; }
+    #tm-dawd {
+      font-size: .72rem; color: rgba(232,197,71,.65);
+      font-style: italic; line-height: 1.7;
+      max-width: 580px; margin: 0 auto;
+    }
 
-    #tm-prog-bar { height:2px; background:rgba(255,255,255,.04); flex-shrink:0; }
-    #tm-prog-fill { height:100%; background:#C9A227; transition:width .4s ease; width:0%; }
+    /* Mode toggle active state */
+    .tl-mode-btn.active, .tl-mode-btn:focus {
+      background: #C9A227 !important; color: #000 !important;
+    }
   `;
   document.head.appendChild(styleEl);
 
+  /* ─── PALETTES ─── */
+  const PALS = [
+    ["#3A180A","#0E0603"],["#17366A","#06101E"],["#0A1E35","#03080F"],
+    ["#28183A","#09060F"],["#163822","#050E09"],["#422C0E","#100A04"],
+    ["#380A0A","#0E0303"],["#181838","#060614"],["#1C2C18","#080E06"],
+    ["#2A1838","#08060F"],["#182830","#05090C"],["#2C1A08","#0A0703"],
+    ["#183444","#060D10"],["#381838","#0E060E"],["#18183A","#060610"],
+    ["#242424","#070707"],["#5C2F0E","#150A02"],
+  ];
+
   /* ─── WAIT FOR DATA ─── */
   let TM = null;
+
   const _poll = setInterval(() => {
-    if (TM) { clearInterval(_poll); return; }
     if (typeof DATA === "undefined" || !DATA.awards?.length) return;
+    clearInterval(_poll);
     patchNav();
     patchMode();
-    clearInterval(_poll);
+    if (document.getElementById("page-timemachine")?.classList.contains("active")) {
+      setTimeout(boot, 60);
+    }
   }, 200);
 
   function patchNav() {
@@ -160,13 +171,16 @@
 
   function patchMode() {
     window.setTlMode = function (mode, el) {
-      document.querySelectorAll(".tl-mode-btn").forEach(b => b.classList.remove("active"));
+      document.querySelectorAll(".tl-mode-btn").forEach(b => {
+        b.style.background = "transparent";
+        b.style.color = "#8A8A9A";
+        b.classList.remove("active");
+      });
+      el.style.background = "#C9A227";
+      el.style.color = "#000";
       el.classList.add("active");
       if (TM) TM.setMode(mode);
     };
-    if (document.getElementById("page-timemachine")?.classList.contains("active")) {
-      setTimeout(boot, 60);
-    }
   }
 
   /* ─── BOOT ─── */
@@ -193,13 +207,10 @@
             <div id="tm-dttl"></div>
             <div id="tm-dbdg"></div>
             <div id="tm-dmeta"></div>
+            <div id="tm-dawd"></div>
           </div>
         </div>
-        <div id="tm-prog-bar"><div id="tm-prog-fill"></div></div>
       </div>`;
-
-    const hint = document.querySelector(".tl-scroll-hint");
-    if (hint) hint.textContent = "← → keys  •  click arrows  •  drag  •  click to open";
 
     TM = new OscarCarousel();
     TM.setMode("Oscar");
@@ -226,14 +237,12 @@
       this.dotsEl = document.getElementById("tm-dots");
       this.cntEl  = document.getElementById("tm-cnt");
       this.diEl   = document.getElementById("tm-di");
-      this.progEl = document.getElementById("tm-prog-fill");
 
       this._bindEvents();
     }
 
     setMode(mode) {
       this.mode = mode;
-      // Cancel pending loads
       this._loadTimers.forEach(clearTimeout);
       this._loadTimers = [];
 
@@ -248,6 +257,13 @@
       );
       this.cur  = Math.max(0, this.movies.length - 1);
       this.live = this.cur;
+
+      // Update header subtitle with year range
+      const years = this.movies.map(m => +(m.award_year || m.year || 0)).filter(Boolean);
+      const subEl = document.getElementById("tm-hdr-sub");
+      if (subEl && years.length)
+        subEl.textContent = Math.min(...years) + " \u2014 " + Math.max(...years);
+
       this._build();
     }
 
@@ -261,31 +277,25 @@
       this._loadTimers.forEach(clearTimeout);
       this._loadTimers = [];
 
-      const PALS = [
-        ["#1a1035","#06020f"],["#0e1f3d","#020b1a"],["#1d0e0e","#0a0202"],
-        ["#0d1f18","#020a06"],["#1a160a","#080601"],["#0d0d28","#03030f"],
-        ["#1a0d1f","#060208"],["#1f1a0d","#080601"],
-      ];
-
       this.movies.forEach((m, i) => {
         const pal   = PALS[i % PALS.length];
         const year  = m.award_year || m.year || "?";
         const title = m.title || "";
         const dir   = m.director || "";
-        const stars = "★".repeat(Math.min(Math.round(+(m.vote_average || 0) / 2), 5)) || "★";
+        const wins  = parseInt(m.award_count || m.wins || 1) || 1;
+        const stars = "★".repeat(Math.min(wins, 7));
 
         const card = document.createElement("div");
         card.className = "tm-card";
         card.dataset.i = i;
 
-        // Note: img has NO loading="lazy" — we control loading ourselves
         card.innerHTML = `
           <img class="tm-card-img" alt="${title.replace(/"/g,"&quot;")}">
           <div class="tm-card-fb" style="background:linear-gradient(160deg,${pal[0]} 0%,${pal[1]} 100%);">
-            <div style="font-family:'Cinzel',serif;font-size:.55rem;letter-spacing:.2em;color:#C9A227;">${year}</div>
-            <div style="font-family:'Cinzel',serif;font-size:.72rem;font-weight:700;color:#fff;line-height:1.3;margin:.15rem 0;">${title}</div>
-            <div style="font-size:.55rem;color:rgba(255,255,255,.38);">${dir}</div>
-            <div style="color:#C9A227;font-size:.58rem;margin-top:.3rem;">${stars}</div>
+            <div style="font-family:'Cinzel',serif;font-size:.58rem;letter-spacing:.22em;color:#C9A227;margin-bottom:.2rem;">${year}</div>
+            <div style="font-family:'Cinzel',serif;font-size:.8rem;font-weight:700;color:#fff;line-height:1.3;">${title}</div>
+            <div style="font-size:.6rem;color:rgba(255,255,255,.42);margin-top:.25rem;">${dir}</div>
+            <div style="margin-top:.45rem;color:#C9A227;font-size:.62rem;">${stars}</div>
           </div>
           <div class="tm-card-bot">
             <span class="tm-card-yr">${year}</span>
@@ -293,8 +303,10 @@
           </div>`;
 
         card.addEventListener("click", () => {
-          if (Math.abs(i - this.cur) > 0.4) { this._snap(i); return; }
-          if (typeof openMovieObj === "function") openMovieObj(m);
+          const dist = Math.abs(i - this.cur);
+          if (dist > 0.4) { this._snap(i); return; }
+          // Open movie detail modal
+          this._openMovie(m);
         });
 
         this.track.appendChild(card);
@@ -306,10 +318,25 @@
         this.dotsEl.appendChild(dot);
       });
 
-      // Staggered poster loading: current card first, then spiral outward
       this._schedulePosters(this.cur);
       this._pose(this.cur);
       this._refresh();
+    }
+
+    /* ── open movie detail ── */
+    _openMovie(m) {
+      // Use the main app's openMovieObj if available
+      if (typeof openMovieObj === "function") {
+        // Try to find the full movie object from movieRegistry by id or title match
+        if (typeof movieRegistry !== "undefined") {
+          const full = movieRegistry.find(r =>
+            (r && String(r.id) === String(m.id)) ||
+            (r && r.title === m.title && (r.award_year || r.year || r.release_date || "").toString().slice(0,4) === String(m.award_year || m.year || ""))
+          );
+          if (full) { openMovieObj(full); return; }
+        }
+        openMovieObj(m);
+      }
     }
 
     /* ── staggered poster loading from center outward ── */
@@ -317,13 +344,11 @@
       this._loadTimers.forEach(clearTimeout);
       this._loadTimers = [];
 
-      const cards  = Array.from(this.track.querySelectorAll(".tm-card"));
-      const n      = cards.length;
+      const cards = Array.from(this.track.querySelectorAll(".tm-card"));
+      const n = cards.length;
       if (!n) return;
 
-      // Build load order: center, center±1, center±2, ...
-      const order = [];
-      order.push(center);
+      const order = [center];
       for (let d = 1; d < n; d++) {
         if (center + d < n) order.push(center + d);
         if (center - d >= 0) order.push(center - d);
@@ -334,13 +359,12 @@
         const m    = this.movies[idx];
         if (!card || !m?.poster_url) return;
 
-        // First 8 cards load immediately, rest staggered 80ms apart
         const delay = rank < 8 ? 0 : (rank - 8) * 80;
         const t = setTimeout(() => {
           const img = card.querySelector(".tm-card-img");
-          if (img.src) return; // already loading
+          if (img.src) return;
           img.onload  = () => img.classList.add("loaded");
-          img.onerror = () => {}; // gradient fallback stays
+          img.onerror = () => {};
           img.src = m.poster_url;
         }, delay);
         this._loadTimers.push(t);
@@ -349,11 +373,11 @@
 
     /* ── CSS 3D pose ── */
     _pose(idx) {
-      const GAP = 220, TZ = 85, RY = 20, SC = 0.82, OP = 0.22, MAX = 4;
+      const GAP = 236, TZ = 92, RY = 22, SC = 0.82, OP = 0.22, MAX = 4;
       this.track.querySelectorAll(".tm-card").forEach((c, i) => {
         const off = i - idx, ab = Math.abs(off);
         if (ab > MAX) { c.style.opacity = "0"; c.style.pointerEvents = "none"; return; }
-        const sc = Math.pow(SC, ab), op = Math.max(.06, 1 - ab * OP);
+        const sc = Math.pow(SC, ab), op = Math.max(.08, 1 - ab * OP);
         c.style.transform  = `translateX(${off * GAP}px) translateZ(${-ab * TZ}px) rotateY(${-off * RY}deg) scale(${sc})`;
         c.style.opacity    = op;
         c.style.zIndex     = 100 - Math.floor(ab * 12);
@@ -369,29 +393,41 @@
       if (!m) return;
 
       this.cntEl.textContent = `${this.cur + 1} / ${this.movies.length}`;
-      const pct = this.movies.length > 1
-        ? ((this.cur / (this.movies.length - 1)) * 100).toFixed(1) : "100";
-      this.progEl.style.width = pct + "%";
+
+      // Outer progress bar
+      const progFill = document.getElementById("tm-outer-prog-fill");
+      if (progFill) {
+        const pct = this.movies.length > 1
+          ? ((this.cur / (this.movies.length - 1)) * 100).toFixed(1) : "100";
+        progFill.style.width = pct + "%";
+      }
+
       this.dotsEl.querySelectorAll(".tm-dot").forEach((d, i) =>
         d.classList.toggle("on", i === this.cur));
 
       const fill = () => {
-        const year   = m.award_year || m.year || "";
-        const title  = m.title || "";
-        const atype  = m.award_type || "Award";
-        const genre  = (m.genres || "").split(",").slice(0, 2).join(" · ");
-        const rating = parseFloat(m.vote_average || 0).toFixed(1);
-        const dir    = m.director ? "Dir. " + m.director : "";
+        const year    = m.award_year || m.year || "";
+        const title   = m.title || "";
+        const atype   = m.award_type || "Award";
+        const wins    = parseInt(m.award_count || m.wins || 1) || 1;
+        const wlabel  = wins + " Academy Award" + (wins !== 1 ? "s" : "");
+        const cats    = (m.award_category || m.categories || m.award_categories || "").trim();
+        const genre   = (m.genres || "").split(",").slice(0, 2).join(" · ");
+        const rating  = parseFloat(m.vote_average || 0).toFixed(1);
+        const dir     = m.director ? "Dir. " + m.director : "";
+        const castStr = (m.cast || "").split(",").slice(0, 3).map(s => s.trim()).join(" · ");
+
         document.getElementById("tm-dyr").textContent  = year;
         document.getElementById("tm-dttl").textContent = title;
-        document.getElementById("tm-dbdg").innerHTML   = `⭐ ${atype}`;
+        document.getElementById("tm-dbdg").innerHTML   = `⭐ ${/oscar/i.test(atype) ? wlabel : atype}`;
         document.getElementById("tm-dmeta").textContent =
-          [dir, genre, rating > 0 ? "★ " + rating : ""].filter(Boolean).join("  ·  ");
+          [dir, castStr || genre, rating > 0 ? "★ " + rating : ""].filter(Boolean).join("  ·  ");
+        document.getElementById("tm-dawd").textContent = cats;
       };
 
       if (anim) {
         this.diEl.classList.add("out");
-        setTimeout(() => { fill(); this.diEl.classList.remove("out"); }, 230);
+        setTimeout(() => { fill(); this.diEl.classList.remove("out"); }, 240);
       } else { fill(); }
     }
 
@@ -403,16 +439,14 @@
       this.dragging = false;
       this.vp.classList.remove("tm-drag");
       this._pose(this.cur);
-      // Re-schedule so nearest cards load next
       this._schedulePosters(this.cur);
       if (changed || anim) this._refresh(true); else this._refresh();
     }
 
     /* ── events ── */
     _bindEvents() {
-      const GAP = 220;
+      const GAP = 236;
 
-      // Mouse drag
       this.vp.addEventListener("mousedown", e => {
         this.dragging = true;
         this.dsx = e.clientX; this.dsi = this.cur; this.live = this.cur;
@@ -426,7 +460,6 @@
       });
       document.addEventListener("mouseup", () => { if (this.dragging) this._snap(this.live); });
 
-      // Touch
       this.vp.addEventListener("touchstart", e => {
         this.dsx = e.touches[0].clientX; this.dsi = this.cur; this.live = this.cur;
       }, { passive: true });
@@ -436,7 +469,6 @@
       }, { passive: true });
       this.vp.addEventListener("touchend", () => this._snap(this.live));
 
-      // Wheel
       let wt = 0;
       this.vp.addEventListener("wheel", e => {
         e.preventDefault();
@@ -444,7 +476,6 @@
         (e.deltaX || e.deltaY) > 0 ? this.go(1) : this.go(-1);
       }, { passive: false });
 
-      // Buttons
       document.getElementById("tm-prev").addEventListener("click", () => this.go(-1));
       document.getElementById("tm-next").addEventListener("click", () => this.go(1));
     }
