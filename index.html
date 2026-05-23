@@ -163,8 +163,7 @@ html,body{height:100%;font-family:'Outfit',sans-serif;background:var(--bg);color
 
 /* ── Hero banner ── */
 .hero-banner{position:relative;height:420px;overflow:hidden;background:var(--bg2);padding-top:56px}
-.hero-backdrop{position:absolute;inset:0;filter:brightness(0.55) saturate(1.1);transition:opacity 0.5s ease;overflow:hidden}
-.hero-backdrop img{position:absolute;inset:0;width:100%;height:100%;transition:opacity 0.5s ease}
+.hero-backdrop{position:absolute;inset:0;background-size:cover;background-repeat:no-repeat;background-position:center center;filter:brightness(0.55) saturate(1.1);transition:background-image 0.4s ease}
 .hero-gradient{position:absolute;inset:0;background:linear-gradient(to right,rgba(8,11,18,0.88) 35%,transparent),linear-gradient(to top,rgba(8,11,18,0.95) 0%,transparent 50%)}
 .hero-content{position:relative;padding:50px 48px 36px;display:flex;flex-direction:column;justify-content:flex-end;height:100%}
 .hero-tag{font-size:9px;letter-spacing:4px;color:var(--gold);text-transform:uppercase;margin-bottom:10px}
@@ -231,7 +230,7 @@ html,body{height:100%;font-family:'Outfit',sans-serif;background:var(--bg);color
 .time-badge{font-size:10px;background:var(--gold-dim);border:1px solid rgba(201,168,76,0.3);color:var(--gold);padding:2px 8px;border-radius:4px}
 
 /* ── Top Rated Page ── */
-#top-rated-bg{position:fixed;top:0;left:0;right:0;bottom:0;background-repeat:no-repeat;filter:brightness(0.3) saturate(0.85) contrast(1.15);transition:opacity 0.5s ease;pointer-events:none;z-index:0;overflow:hidden}
+#top-rated-bg{position:fixed;top:0;left:0;right:0;bottom:0;background-size:cover;background-repeat:no-repeat;background-position:center center;filter:brightness(0.3) saturate(0.85) contrast(1.15);transition:background-image 0.4s ease;pointer-events:none;z-index:0}
 #page-top-rated .page-inner{position:relative;z-index:1}
 .top-rated-item{display:flex;align-items:center;gap:16px;padding:14px 28px;border-bottom:1px solid var(--border);cursor:pointer;transition:background 0.2s;position:relative}
 .top-rated-item:hover{background:rgba(255,255,255,0.03)}
@@ -427,9 +426,7 @@ html,body{height:100%;font-family:'Outfit',sans-serif;background:var(--bg);color
     <!-- ═══════════════ HOME PAGE ═══════════════ -->
     <div class="page active" id="page-home">
       <div class="hero-banner" id="home-hero">
-        <div class="hero-backdrop" id="home-backdrop">
-          <img id="home-backdrop-img" src="" alt="" style="display:none;position:absolute;inset:0;width:100%;height:100%;object-fit:cover;object-position:center center;">
-        </div></div>
+        <div class="hero-backdrop" id="home-backdrop"></div></div>
         <div class="hero-gradient"></div>
         <div class="hero-content">
           <div class="hero-tag" id="home-tag">Now Trending</div>
@@ -490,7 +487,7 @@ html,body{height:100%;font-family:'Outfit',sans-serif;background:var(--bg);color
 
     <!-- ═══════════════ TOP RATED ═══════════════ -->
     <div class="page" id="page-top-rated">
-      <div id="top-rated-bg"><img id="tr-bg-img" src="" alt="" style="display:none;width:100%;height:100%;object-fit:cover;object-position:center center;position:absolute;inset:0;transition:opacity 0.5s ease;opacity:0;"></div>
+      <div id="top-rated-bg"></div>
       <div class="page-inner">
         <div class="page-title-bar" style="background:transparent">
           <div class="page-title">⭐ Top Rated</div>
@@ -929,45 +926,38 @@ function updateHero(m) {
   const bd = m.backdrop_url || m.backdrop || m.backdrop_path || '';
   const poster = m.poster_url || '';
   let imgUrl = '';
-  if (bd && bd.includes('image.tmdb.org')) {
-    imgUrl = bd.replace(/\/t\/p\/[^\/]+\//, '/t/p/w1280/');
-  } else if (bd) {
-    imgUrl = bd;
-  } else if (poster && poster.includes('image.tmdb.org')) {
-    imgUrl = poster.replace(/\/t\/p\/[^\/]+\//, '/t/p/original/');
-  } else {
-    imgUrl = poster;
-  }
+  if (bd && bd.includes('image.tmdb.org'))       imgUrl = bd.replace(/\/t\/p\/[^\/]+\//, '/t/p/w1280/');
+  else if (bd)                                    imgUrl = bd;
+  else if (poster && poster.includes('image.tmdb.org')) imgUrl = poster.replace(/\/t\/p\/[^\/]+\//, '/t/p/original/');
+  else                                            imgUrl = poster;
 
-  const imgEl = $('home-backdrop-img');
+  const el = $('home-backdrop');
   if (imgUrl) {
-    imgEl.style.opacity = '0';
-    imgEl.style.display = 'block';
     const tmp = new Image();
     tmp.onload = function() {
-      const bannerW = $('home-hero').offsetWidth;
-      const bannerH = $('home-hero').offsetHeight;
-      const imgRatio = tmp.naturalWidth / tmp.naturalHeight;
-      const bannerRatio = bannerW / bannerH;
-      // Landscape image wider than banner: cover fills perfectly
-      // Portrait image narrower than banner: still use cover so it fills height, cropping sides slightly
-      imgEl.style.objectFit = 'cover';
-      imgEl.style.objectPosition = imgRatio < 1 ? 'center top' : 'center center';
-      imgEl.src = imgUrl;
-      imgEl.style.opacity = '1';
+      const bannerW = $('home-hero').offsetWidth || window.innerWidth;
+      const bannerH = 420;
+      const iW = tmp.naturalWidth, iH = tmp.naturalHeight;
+      // Always cover — but position smartly
+      // Portrait poster: center the subject (top 40% of image has faces)
+      const pos = (iH > iW) ? 'center 20%' : 'center center';
+      el.style.backgroundImage    = `url(${imgUrl})`;
+      el.style.backgroundSize     = 'cover';
+      el.style.backgroundPosition = pos;
+      el.style.backgroundRepeat   = 'no-repeat';
     };
-    tmp.onerror = function() { imgEl.style.display = 'none'; };
+    tmp.onerror = function() { el.style.backgroundImage = ''; };
     tmp.src = imgUrl;
   } else {
-    imgEl.style.display = 'none';
+    el.style.backgroundImage = '';
   }
 
   $('home-htitle').textContent = m.title || '';
   $('home-rating').textContent = `★ ${parseFloat(m.vote_average||0).toFixed(1)}`;
   $('home-genres').textContent = (m.genres||'').split(',').slice(0,3).join(' · ');
-  $('home-year').textContent = (m.release_date||'').slice(0,4);
+  $('home-year').textContent   = (m.release_date||'').slice(0,4);
   const trailer = $('home-trailer');
-  if (m.trailer_url) { trailer.href = m.trailer_url; trailer.style.display=''; }
+  if (m.trailer_url) { trailer.href = m.trailer_url; trailer.style.display = ''; }
   else trailer.style.display = 'none';
 }
 
@@ -1084,28 +1074,23 @@ function trHover(m) {
   const bd = m.backdrop_url || m.backdrop || m.backdrop_path || '';
   const poster = m.poster_url || '';
   let imgUrl = '';
-  if (bd && bd.includes('image.tmdb.org')) {
-    imgUrl = bd.replace(/\/t\/p\/[^\/]+\//, '/t/p/w1280/');
-  } else if (bd) {
-    imgUrl = bd;
-  } else if (poster && poster.includes('image.tmdb.org')) {
-    imgUrl = poster.replace(/\/t\/p\/[^\/]+\//, '/t/p/original/');
-  } else {
-    imgUrl = poster;
-  }
-  const imgEl = $('tr-bg-img');
-  if (!imgUrl) { imgEl.style.opacity = '0'; return; }
-  if (imgEl.src === imgUrl) return; // already showing
-  imgEl.style.opacity = '0';
+  if (bd && bd.includes('image.tmdb.org'))       imgUrl = bd.replace(/\/t\/p\/[^\/]+\//, '/t/p/w1280/');
+  else if (bd)                                    imgUrl = bd;
+  else if (poster && poster.includes('image.tmdb.org')) imgUrl = poster.replace(/\/t\/p\/[^\/]+\//, '/t/p/original/');
+  else                                            imgUrl = poster;
+
+  const el = $('top-rated-bg');
+  if (!imgUrl) { el.style.backgroundImage = ''; return; }
   const tmp = new Image();
   tmp.onload = function() {
-    imgEl.style.objectFit = 'cover';
-    imgEl.style.objectPosition = tmp.naturalWidth < tmp.naturalHeight ? 'center top' : 'center center';
-    imgEl.src = imgUrl;
-    imgEl.style.display = 'block';
-    imgEl.style.opacity = '1';
+    const iW = tmp.naturalWidth, iH = tmp.naturalHeight;
+    const pos = (iH > iW) ? 'center 15%' : 'center center';
+    el.style.backgroundImage    = `url(${imgUrl})`;
+    el.style.backgroundSize     = 'cover';
+    el.style.backgroundPosition = pos;
+    el.style.backgroundRepeat   = 'no-repeat';
   };
-  tmp.onerror = function() { imgEl.style.opacity = '0'; };
+  tmp.onerror = function() { el.style.backgroundImage = ''; };
   tmp.src = imgUrl;
 }
 
