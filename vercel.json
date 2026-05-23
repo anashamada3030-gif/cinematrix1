@@ -1,11 +1,3 @@
 {
-  "buildCommand": "echo 'Build successful'",
-  "functions": {
-    "api/news.py": {
-      "runtime": "python3.12"
-    },
-    "api/health.py": {
-      "runtime": "python3.12"
-    }
-  }
+  "buildCommand": "echo 'Build successful'"
 }
