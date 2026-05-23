@@ -28,8 +28,61 @@ html,body{height:100%;font-family:'Outfit',sans-serif;background:var(--bg);color
 
 /* ── Layout ── */
 #app{display:flex;height:100vh;overflow:hidden}
-#sidebar{width:var(--sidebar-w);background:var(--bg2);border-right:1px solid var(--border);display:flex;flex-direction:column;flex-shrink:0;overflow-y:auto;z-index:100}
-#main{flex:1;overflow-y:auto;overflow-x:hidden;position:relative}
+#main{flex:1;overflow-y:auto;overflow-x:hidden;position:relative;transition:margin-left 0.3s cubic-bezier(.4,0,.2,1)}
+
+/* ── Sidebar — off-canvas overlay ── */
+#sidebar{
+  position:fixed;top:0;left:0;height:100vh;
+  width:var(--sidebar-w);
+  background:var(--bg2);
+  border-right:1px solid var(--border);
+  display:flex;flex-direction:column;
+  overflow-y:auto;
+  z-index:500;
+  transform:translateX(-100%);
+  transition:transform 0.3s cubic-bezier(.4,0,.2,1), box-shadow 0.3s ease;
+  box-shadow:none;
+}
+#sidebar.open{
+  transform:translateX(0);
+  box-shadow:4px 0 40px rgba(0,0,0,0.7);
+}
+
+/* Dim overlay behind open sidebar */
+#sidebar-overlay{
+  display:none;position:fixed;inset:0;
+  background:rgba(0,0,0,0.55);
+  z-index:499;
+  opacity:0;transition:opacity 0.3s ease;
+}
+#sidebar-overlay.open{display:block;opacity:1;}
+
+/* Hamburger button — always visible top-left */
+#menu-btn{
+  position:fixed;top:14px;left:16px;z-index:501;
+  width:36px;height:36px;
+  background:var(--bg2);
+  border:1px solid var(--border);
+  border-radius:8px;
+  cursor:pointer;
+  display:flex;flex-direction:column;
+  align-items:center;justify-content:center;
+  gap:5px;padding:0;
+  transition:background 0.2s, border-color 0.2s;
+}
+#menu-btn:hover{background:var(--bg3);border-color:var(--border2);}
+#menu-btn span{
+  display:block;width:18px;height:2px;
+  background:var(--text2);border-radius:2px;
+  transition:all 0.3s cubic-bezier(.4,0,.2,1);
+  transform-origin:center;
+}
+/* Animate to X when open */
+#sidebar.open ~ * #menu-btn span:nth-child(1),
+#menu-btn.open span:nth-child(1){transform:translateY(7px) rotate(45deg);background:var(--gold);}
+#menu-btn.open span:nth-child(2){opacity:0;transform:scaleX(0);}
+#menu-btn.open span:nth-child(3){transform:translateY(-7px) rotate(-45deg);background:var(--gold);}
+#menu-btn.open{border-color:var(--border2);background:var(--bg3);}
 
 /* ── Sidebar ── */
 .logo{padding:20px 18px 16px;border-bottom:1px solid var(--border)}
@@ -48,8 +101,11 @@ html,body{height:100%;font-family:'Outfit',sans-serif;background:var(--bg);color
 /* Full-height iframe pages */
 #page-galaxy{min-height:unset;height:100vh}
 #page-galaxy iframe{width:100%;height:100%;border:none;display:block}
-/* Time Machine — flex column so canvas fills remaining height */
-#page-timemachine.active{display:flex!important}
+/* Time Machine — flex column, full dark bg, no overflow clip */
+#page-timemachine.active{display:flex!important;background:#03030A!important;}
+#page-timemachine{background:#03030A!important;}
+/* When time machine is active, kill #main scroll so bg fills properly */
+#main:has(#page-timemachine.active){overflow:hidden;}
 
 /* ── Buttons ── */
 .btn{padding:8px 18px;border-radius:5px;font-family:'Outfit',sans-serif;font-size:12px;cursor:pointer;transition:all 0.2s;letter-spacing:0.5px;border:none}
@@ -289,6 +345,15 @@ html,body{height:100%;font-family:'Outfit',sans-serif;background:var(--bg);color
 <body>
 
 <div id="app">
+
+  <!-- Hamburger button -->
+  <button id="menu-btn" onclick="toggleSidebar()" aria-label="Toggle menu">
+    <span></span><span></span><span></span>
+  </button>
+
+  <!-- Dim overlay -->
+  <div id="sidebar-overlay" onclick="closeSidebar()"></div>
+
   <!-- SIDEBAR -->
   <nav id="sidebar">
     <div class="logo">
@@ -569,10 +634,37 @@ html,body{height:100%;font-family:'Outfit',sans-serif;background:var(--bg);color
     </div>
 
     <!-- ═══════════════ TIME MACHINE — Oscar Timeline Design ═══════════════ -->
-    <div class="page" id="page-timemachine" style="min-height:unset;height:100vh;display:none;flex-direction:column;background:#03030A;overflow:hidden;position:relative">
-      <!-- Grain overlay -->
-      <div style="position:absolute;inset:0;pointer-events:none;z-index:1;opacity:.13;background-image:url(&quot;data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='300' height='300'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.75' numOctaves='4' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E&quot;)"></div>
-      <!-- Radial bg gradients -->
+    <div class="page" id="page-timemachine" style="min-height:unset;height:100vh;display:none;flex-direction:column;overflow:hidden;position:relative">
+
+      <!-- HEADER -->
+      <div id="tm-page-hdr" style="text-align:center;padding:1.2rem 0 0.5rem;position:relative;z-index:10;flex-shrink:0;background:#03030A">
+        <div style="font-family:'Cinzel',serif;font-size:.58rem;letter-spacing:.55em;color:#C9A227;text-transform:uppercase;margin-bottom:.2rem;opacity:.85">Academy of Motion Picture Arts &amp; Sciences</div>
+        <h1 style="font-family:'Cinzel',serif;font-size:1.6rem;font-weight:900;color:#F0EDE6;letter-spacing:.04em;line-height:1;margin-bottom:.1rem">Cinema Time Machine</h1>
+        <div id="tm-hdr-sub" style="font-size:.7rem;color:#8A8A9A;letter-spacing:.15em">Award-Winning Films Across the Decades</div>
+        <div style="width:44px;height:1px;background:linear-gradient(90deg,transparent,#C9A227,transparent);margin:.5rem auto"></div>
+      </div>
+
+      <!-- MODE TOGGLE -->
+      <div style="display:flex;justify-content:center;margin:.2rem 0 0;position:relative;z-index:10;flex-shrink:0;background:#03030A">
+        <div style="display:flex;background:rgba(255,255,255,.03);border:1px solid rgba(201,162,39,.2);border-radius:50px;padding:3px;gap:2px">
+          <button class="tl-mode-btn" onclick="setTlMode('Oscar',this)" style="font-family:'Cinzel',serif;font-size:.6rem;font-weight:600;letter-spacing:.15em;padding:.35rem 1.2rem;border-radius:50px;border:none;background:#C9A227;color:#000;cursor:pointer;transition:all .3s">OSCAR</button>
+          <button class="tl-mode-btn" onclick="setTlMode('GoldenGlobe',this)" style="font-family:'Cinzel',serif;font-size:.6rem;font-weight:600;letter-spacing:.15em;padding:.35rem 1.2rem;border-radius:50px;border:none;background:transparent;color:#8A8A9A;cursor:pointer;transition:all .3s">GOLDEN GLOBE</button>
+          <button class="tl-mode-btn" onclick="setTlMode('All',this)" style="font-family:'Cinzel',serif;font-size:.6rem;font-weight:600;letter-spacing:.15em;padding:.35rem 1.2rem;border-radius:50px;border:none;background:transparent;color:#8A8A9A;cursor:pointer;transition:all .3s">ALL AWARDS</button>
+        </div>
+      </div>
+
+      <!-- CAROUSEL WRAP — tm-root injected here by timemachine3d.js -->
+      <div id="timeline-canvas-wrap" style="flex:1;position:relative;z-index:10;min-height:0"></div>
+
+      <div class="tl-scroll-hint" style="text-align:center;font-size:11px;color:#8A8A9A;padding:4px 28px 12px;flex-shrink:0;position:relative;z-index:10;background:#03030A">
+        ← → keys  •  click arrows  •  drag  •  click poster to open
+      </div>
+
+      <!-- Bottom progress bar -->
+      <div id="tm-outer-prog" style="height:2px;background:rgba(255,255,255,.04);flex-shrink:0;position:relative;z-index:10">
+        <div id="tm-outer-prog-fill" style="height:100%;background:#C9A227;transition:width .4s ease;width:0%"></div>
+      </div>
+    </div>
       <div style="position:absolute;inset:0;pointer-events:none;z-index:0;background-image:radial-gradient(ellipse 70% 40% at 50% 0%,rgba(201,162,39,0.08) 0%,transparent 70%),radial-gradient(ellipse 100% 60% at 50% 100%,rgba(10,10,40,0.85) 0%,transparent 70%)"></div>
 
       <!-- HEADER -->
@@ -676,6 +768,27 @@ html,body{height:100%;font-family:'Outfit',sans-serif;background:var(--bg);color
 
 <script>
 // ══════════════════════════════════════════════════════════
+// SIDEBAR TOGGLE
+// ══════════════════════════════════════════════════════════
+function toggleSidebar() {
+  const sidebar  = document.getElementById('sidebar');
+  const overlay  = document.getElementById('sidebar-overlay');
+  const btn      = document.getElementById('menu-btn');
+  const isOpen   = sidebar.classList.contains('open');
+  if (isOpen) { closeSidebar(); } else { openSidebar(); }
+}
+function openSidebar() {
+  document.getElementById('sidebar').classList.add('open');
+  document.getElementById('sidebar-overlay').classList.add('open');
+  document.getElementById('menu-btn').classList.add('open');
+}
+function closeSidebar() {
+  document.getElementById('sidebar').classList.remove('open');
+  document.getElementById('sidebar-overlay').classList.remove('open');
+  document.getElementById('menu-btn').classList.remove('open');
+}
+
+// ══════════════════════════════════════════════════════════
 // UTILITIES
 // ══════════════════════════════════════════════════════════
 const $ = id => document.getElementById(id);
@@ -702,6 +815,7 @@ function movieCardHTML(m, onclick='') {
 let currentPage = 'home';
 
 function nav(page, el) {
+  closeSidebar();
   document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
   document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
 
