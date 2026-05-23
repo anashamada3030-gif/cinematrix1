@@ -1423,9 +1423,17 @@ let newsCategory = 'all', newsCache = {};
 async function fetchNews(category) {
   if (newsCache[category]) return newsCache[category];
   const query = NEWS_QUERIES[category] || NEWS_QUERIES.all;
-  const params = new URLSearchParams({ q: query, num: '12', hl: 'ar', gl: 'eg' });
-  const res = await fetch(`${PROXY_URL}?${params}`);
-  if (!res.ok) throw new Error(`Proxy error ${res.status} — is news_proxy.py running?`);
+  const params = new URLSearchParams({
+    api_key: SERPAPI_KEY,
+    engine: 'google',
+    q: query,
+    tbm: 'nws',
+    num: '12',
+    hl: 'ar',
+    gl: 'eg'
+  });
+  const res = await fetch(`https://serpapi.com/search.json?${params}`);
+  if (!res.ok) throw new Error(`SerpAPI error ${res.status}`);
   const data = await res.json();
   if (data.error) throw new Error(data.error);
   const articles = (data.news_results || []).map((item, i) => ({
