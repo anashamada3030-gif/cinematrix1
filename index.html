@@ -140,7 +140,7 @@ html,body{height:100%;font-family:'Outfit',sans-serif;background:var(--bg);color
 .movie-card:hover{transform:translateY(-4px)}
 .movie-card:hover .poster-wrap{border-color:var(--gold)}
 .poster-wrap{width:100%;padding-top:150%;border-radius:8px;border:1px solid var(--border);background:var(--bg3);overflow:hidden;display:block;position:relative}
-.poster-img{width:100%;height:100%;object-fit:contain;border-radius:0;border:none;background:var(--bg3);display:block;position:absolute;inset:0;}
+.poster-img{width:100%;height:100%;object-fit:cover;object-position:center top;border-radius:0;border:none;background:var(--bg3);display:block;position:absolute;inset:0;}
 .poster-placeholder{width:100%;aspect-ratio:2/3;border-radius:8px;border:1px solid var(--border);background:var(--bg3);display:flex;align-items:center;justify-content:center;font-size:32px}
 .card-title{font-size:11px;color:var(--text);margin-top:6px;line-height:1.3;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .card-meta{font-size:10px;color:var(--text2);margin-top:2px}
@@ -162,8 +162,8 @@ html,body{height:100%;font-family:'Outfit',sans-serif;background:var(--bg);color
 .grid-6{display:grid;grid-template-columns:repeat(6,1fr);gap:12px;padding:0 28px 24px;align-items:start}
 
 /* ── Hero banner ── */
-.hero-banner{position:relative;height:480px;overflow:hidden;background:var(--bg2);padding-top:56px}
-.hero-backdrop{position:absolute;inset:0;background-size:contain;background-repeat:no-repeat;background-position:right center;filter:brightness(0.6) saturate(1.15) contrast(1.05);transition:background-image 0.5s ease}
+.hero-banner{position:relative;height:420px;overflow:hidden;background:var(--bg2);padding-top:56px}
+.hero-backdrop{position:absolute;inset:0;background-size:cover;background-position:center center;filter:brightness(0.55) saturate(1.1);transition:background-image 0.5s ease}
 .hero-gradient{position:absolute;inset:0;background:linear-gradient(to right,rgba(8,11,18,0.88) 35%,transparent),linear-gradient(to top,rgba(8,11,18,0.95) 0%,transparent 50%)}
 .hero-content{position:relative;padding:50px 48px 36px;display:flex;flex-direction:column;justify-content:flex-end;height:100%}
 .hero-tag{font-size:9px;letter-spacing:4px;color:var(--gold);text-transform:uppercase;margin-bottom:10px}
@@ -191,7 +191,7 @@ html,body{height:100%;font-family:'Outfit',sans-serif;background:var(--bg);color
 .detail-backdrop{position:absolute;inset:0;background-size:cover;background-position:center top;filter:brightness(0.3)}
 .detail-grad{position:absolute;inset:0;background:linear-gradient(to top,var(--bg2) 0%,transparent 60%)}
 .detail-content{position:relative;padding:20px 28px;display:flex;align-items:flex-end;gap:20px;height:100%}
-.detail-poster{width:80px;height:120px;border-radius:8px;border:2px solid var(--border2);object-fit:contain;flex-shrink:0;background:var(--bg3)}
+.detail-poster{width:80px;height:120px;border-radius:8px;border:2px solid var(--border2);object-fit:cover;object-position:center top;flex-shrink:0;background:var(--bg3)}
 .detail-info{flex:1}
 .detail-title{font-family:'Cinzel',serif;font-size:20px;color:#fff;margin-bottom:6px}
 .detail-meta{display:flex;gap:10px;font-size:11px;color:var(--text2);flex-wrap:wrap}
@@ -214,7 +214,7 @@ html,body{height:100%;font-family:'Outfit',sans-serif;background:var(--bg);color
 .egypt-card{background:var(--card);border:1px solid var(--border);border-radius:10px;overflow:hidden;margin:0 28px 16px;transition:border-color 0.2s}
 .egypt-card:hover{border-color:var(--border2)}
 .egypt-header{display:flex;gap:14px;padding:14px;cursor:pointer}
-.egypt-poster{width:60px;height:85px;border-radius:6px;object-fit:contain;flex-shrink:0;background:var(--bg3)}
+.egypt-poster{width:60px;height:85px;border-radius:6px;object-fit:cover;object-position:center top;flex-shrink:0;background:var(--bg3)}
 .egypt-info{flex:1}
 .egypt-title{font-size:14px;color:var(--text);font-weight:600;margin-bottom:4px}
 .egypt-desc{font-size:11px;color:var(--text2);line-height:1.5;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
@@ -235,7 +235,7 @@ html,body{height:100%;font-family:'Outfit',sans-serif;background:var(--bg);color
 .top-rated-item{display:flex;align-items:center;gap:16px;padding:14px 28px;border-bottom:1px solid var(--border);cursor:pointer;transition:background 0.2s;position:relative}
 .top-rated-item:hover{background:rgba(255,255,255,0.03)}
 .tr-rank{font-family:'Cinzel',serif;font-size:18px;color:var(--text3);width:36px;flex-shrink:0}
-.tr-poster{width:54px;height:81px;border-radius:6px;object-fit:contain;background:var(--bg3);border:1px solid var(--border);flex-shrink:0}
+.tr-poster{width:54px;height:81px;border-radius:6px;object-fit:cover;object-position:center top;border:1px solid var(--border);flex-shrink:0;background:var(--bg3)}
 .tr-info{flex:1}
 .tr-title{font-size:14px;color:var(--text);font-weight:500;margin-bottom:4px}
 .tr-meta{font-size:11px;color:var(--text2)}
@@ -817,14 +817,19 @@ function getPosterUrl(m) {
   return p;
 }
 
-// Convert any TMDB poster URL → high-res backdrop URL
+// Convert any TMDB poster URL → wide backdrop URL
+// Returns {url, isPortrait} so callers can adjust background-size
 function getBackdropUrl(m) {
   const bd = m.backdrop_url || m.backdrop || m.backdrop_path || '';
-  if (bd) return bd.replace(/\/t\/p\/[^\/]+\//, '/t/p/w1280/');
+  if (bd && bd.includes('image.tmdb.org')) {
+    return { url: bd.replace(/\/t\/p\/[^\/]+\//, '/t/p/w1280/'), isPortrait: false };
+  }
+  if (bd) return { url: bd, isPortrait: false };
   const p = m.poster_url || '';
-  if (p && p.includes('image.tmdb.org'))
-    return p.replace(/\/t\/p\/[^\/]+\//, '/t/p/original/');
-  return p;
+  if (p && p.includes('image.tmdb.org')) {
+    return { url: p.replace(/\/t\/p\/[^\/]+\//, '/t/p/w780/'), isPortrait: true };
+  }
+  return { url: p, isPortrait: true };
 }
 
 function movieCardHTML(m, onclick='') {
@@ -918,8 +923,23 @@ function initHome() {
 }
 
 function updateHero(m) {
-  const backdropUrl = getBackdropUrl(m);
-  $('home-backdrop').style.backgroundImage = backdropUrl ? `url(${backdropUrl})` : '';
+  const bd = getBackdropUrl(m);
+  const el = $('home-backdrop');
+  if (bd.url) {
+    el.style.backgroundImage = `url(${bd.url})`;
+    // If only a portrait poster is available, position it right and shrink it gracefully
+    if (bd.isPortrait) {
+      el.style.backgroundSize = 'auto 100%';
+      el.style.backgroundPosition = 'right center';
+      el.style.backgroundRepeat = 'no-repeat';
+    } else {
+      el.style.backgroundSize = 'cover';
+      el.style.backgroundPosition = 'center center';
+      el.style.backgroundRepeat = 'no-repeat';
+    }
+  } else {
+    el.style.backgroundImage = '';
+  }
   $('home-htitle').textContent = m.title || '';
   $('home-rating').textContent = `★ ${parseFloat(m.vote_average||0).toFixed(1)}`;
   $('home-genres').textContent = (m.genres||'').split(',').slice(0,3).join(' · ');
@@ -1038,7 +1058,15 @@ function renderTopRated() {
   }).join('');
 }
 
-function trHover(m) { const url = getBackdropUrl(m); if (url) $('top-rated-bg').style.backgroundImage = `url(${url})`; }
+function trHover(m) {
+  const bd = getBackdropUrl(m);
+  const el = $('top-rated-bg');
+  if (bd.url) {
+    el.style.backgroundImage = `url(${bd.url})`;
+    el.style.backgroundSize = bd.isPortrait ? 'auto 100%' : 'cover';
+    el.style.backgroundPosition = bd.isPortrait ? 'right center' : 'center center';
+  }
+}
 
 // ══════════════════════════════════════════════════════════
 // AWARDS
