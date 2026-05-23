@@ -925,21 +925,21 @@ function initHome() {
 function updateHero(m) {
   const el = $('home-backdrop');
   const bd = m.backdrop_url || m.backdrop || m.backdrop_path || '';
-  if (bd) {
-    const url = bd.replace(/\/t\/p\/[^\/]+\//, '/t/p/w1280/');
-    el.style.backgroundImage = `url(${url})`;
-    el.style.backgroundSize = 'cover';
-    el.style.backgroundPosition = 'center center';
-  } else if (m.poster_url && m.poster_url.includes('image.tmdb.org')) {
-    // Use poster but scale it to fill naturally without tiling
-    const url = m.poster_url.replace(/\/t\/p\/[^\/]+\//, '/t/p/w780/');
-    el.style.backgroundImage = `url(${url})`;
-    el.style.backgroundSize = 'auto 100%';
-    el.style.backgroundPosition = 'right center';
-    el.style.backgroundRepeat = 'no-repeat';
+  const poster = m.poster_url || '';
+  let imgUrl = '';
+  if (bd && bd.includes('image.tmdb.org')) {
+    imgUrl = bd.replace(/\/t\/p\/[^\/]+\//, '/t/p/w1280/');
+  } else if (bd) {
+    imgUrl = bd;
+  } else if (poster && poster.includes('image.tmdb.org')) {
+    imgUrl = poster.replace(/\/t\/p\/[^\/]+\//, '/t/p/w780/');
   } else {
-    el.style.backgroundImage = '';
+    imgUrl = poster;
   }
+  el.style.backgroundImage = imgUrl ? `url(${imgUrl})` : '';
+  el.style.backgroundSize = 'cover';
+  el.style.backgroundPosition = 'center center';
+  el.style.backgroundRepeat = 'no-repeat';
   $('home-htitle').textContent = m.title || '';
   $('home-rating').textContent = `★ ${parseFloat(m.vote_average||0).toFixed(1)}`;
   $('home-genres').textContent = (m.genres||'').split(',').slice(0,3).join(' · ');
@@ -1061,16 +1061,21 @@ function renderTopRated() {
 function trHover(m) {
   const el = $('top-rated-bg');
   const bd = m.backdrop_url || m.backdrop || m.backdrop_path || '';
-  if (bd) {
-    const url = bd.replace(/\/t\/p\/[^\/]+\//, '/t/p/w1280/');
-    el.style.backgroundImage = `url(${url})`;
-    el.style.backgroundSize = 'cover';
-    el.style.backgroundPosition = 'center center';
-    el.style.backgroundRepeat = 'no-repeat';
+  const poster = m.poster_url || '';
+  let imgUrl = '';
+  if (bd && bd.includes('image.tmdb.org')) {
+    imgUrl = bd.replace(/\/t\/p\/[^\/]+\//, '/t/p/w1280/');
+  } else if (bd) {
+    imgUrl = bd;
+  } else if (poster && poster.includes('image.tmdb.org')) {
+    imgUrl = poster.replace(/\/t\/p\/[^\/]+\//, '/t/p/w780/');
   } else {
-    // No landscape backdrop — just clear it, don't use portrait poster
-    el.style.backgroundImage = '';
+    imgUrl = poster;
   }
+  el.style.backgroundImage = imgUrl ? `url(${imgUrl})` : '';
+  el.style.backgroundSize = 'cover';
+  el.style.backgroundPosition = 'center center';
+  el.style.backgroundRepeat = 'no-repeat';
 }
 
 // ══════════════════════════════════════════════════════════
