@@ -1,4 +1,8 @@
 {
   "buildCommand": "echo 'Build successful'",
-  "outputDirectory": "."
+  "outputDirectory": ".",
+  "rewrites": [
+    { "source": "/api/news", "destination": "/api/news.py" },
+    { "source": "/api/health", "destination": "/api/health.py" }
+  ]
 }
