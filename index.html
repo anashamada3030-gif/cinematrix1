@@ -1068,14 +1068,23 @@ function trHover(m) {
   } else if (bd) {
     imgUrl = bd;
   } else if (poster && poster.includes('image.tmdb.org')) {
-    imgUrl = poster.replace(/\/t\/p\/[^\/]+\//, '/t/p/w780/');
+    imgUrl = poster.replace(/\/t\/p\/[^\/]+\//, '/t/p/original/');
   } else {
     imgUrl = poster;
   }
-  el.style.backgroundImage = imgUrl ? `url(${imgUrl})` : '';
-  el.style.backgroundSize = 'cover';
-  el.style.backgroundPosition = 'center center';
-  el.style.backgroundRepeat = 'no-repeat';
+  if (imgUrl) {
+    el.style.cssText = `
+      position:fixed;top:0;left:0;right:0;bottom:0;
+      background-image:url(${imgUrl});
+      background-size:cover;
+      background-repeat:no-repeat;
+      background-position:center center;
+      filter:brightness(0.3) saturate(0.85) contrast(1.15);
+      transition:background-image 0.5s ease;
+      pointer-events:none;
+      z-index:0;
+    `;
+  }
 }
 
 // ══════════════════════════════════════════════════════════
