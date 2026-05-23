@@ -1406,7 +1406,9 @@ function renderWorldTopList() {
 // ══════════════════════════════════════════════════════════
 // Local: Start proxy: python news_proxy.py
 // Production: Runs on Vercel serverless functions
-const SERPAPI_KEY = '9e25d6e1210c75bba233d72a369ea35db7c6b620eb1cf86ca9f100520d47fea7';const PROXY_URL = null; // handled directly below
+// ART NEWS (via Cloudflare Worker)
+// ══════════════════════════════════════════════════════════
+const WORKER_URL = 'https://red-mountain-e437.s-anas-mostafa.workers.dev';
 
 const NEWS_QUERIES = {
   all:         'cinema movies 2026',
@@ -1422,20 +1424,12 @@ let newsCategory = 'all', newsCache = {};
 async function fetchNews(category) {
   if (newsCache[category]) return newsCache[category];
   const query = NEWS_QUERIES[category] || NEWS_QUERIES.all;
-  const GNEWS_KEY = '6ce63de0e50415c5598b01e86db0762b';
-  const params = new URLSearchParams({
-    token: GNEWS_KEY,
-    q: query,
-    lang: 'en',
-    max: '12',
-    sortby: 'publishedAt'
-  });
-  const res = await fetch(`https://red-mountain-e437.s-anas-mostafa.workers.dev?q=${encodeURIComponent(query)}`);
-  if (!res.ok) throw new Error(`GNews error ${res.status}`);
+  const res = await fetch(`${WORKER_URL}?q=${encodeURIComponent(query)}`);
+  if (!res.ok) throw new Error(`Worker error ${res.status}`);
   const data = await res.json();
   const articles = (data.articles || []).map((item, i) => ({
     title:     item.title || '',
-    link:      item.url || '#',
+    link:      item.url   || '#',
     source:    item.source?.name || '',
     date:      item.publishedAt?.slice(0,10) || '',
     snippet:   item.description || '',
