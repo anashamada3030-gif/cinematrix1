@@ -711,6 +711,7 @@ function nav(page, el) {
   if (page === 'news') renderNews();
   if (page === 'recommend') initRec();
   if (page === 'year') initYear();
+  if (page === 'analytics') { const f=$('analytics-iframe'); if(!f.src||f.src==='about:blank') f.src='cinematrix_analytics_v2.html'; }
 
   // Galaxy & TimeMachine are iframes — no JS init needed here.
   // The iframes load their own standalone HTML files:
