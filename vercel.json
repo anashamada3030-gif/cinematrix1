@@ -2,12 +2,10 @@
   "buildCommand": "echo 'Build successful'",
   "functions": {
     "api/news.py": {
-      "runtime": "python3.9",
-      "maxDuration": 30
+      "runtime": "python3.12"
     },
     "api/health.py": {
-      "runtime": "python3.9",
-      "maxDuration": 10
+      "runtime": "python3.12"
     }
   }
 }
