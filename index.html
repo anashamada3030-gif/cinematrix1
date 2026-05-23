@@ -1424,7 +1424,7 @@ let newsCategory = 'all', newsCache = {};
 async function fetchNews(category) {
   if (newsCache[category]) return newsCache[category];
   const query = NEWS_QUERIES[category] || NEWS_QUERIES.all;
-  const res = await fetch(`${WORKER_URL}?q=${encodeURIComponent(query)}`);
+  const res = await fetch(`${WORKER_URL}?q=${encodeURIComponent(query)}&hl=ar&gl=eg`);
   if (!res.ok) throw new Error(`Worker error ${res.status}`);
   const data = await res.json();
   const articles = (data.articles || []).map((item, i) => ({
