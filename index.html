@@ -1422,25 +1422,24 @@ let newsCategory = 'all', newsCache = {};
 async function fetchNews(category) {
   if (newsCache[category]) return newsCache[category];
   const query = NEWS_QUERIES[category] || NEWS_QUERIES.all;
-  const NEWSAPI_KEY = 'YOUR_NEWSAPI_KEY_HERE';
+  const GNEWS_KEY = '6ce63de0e50415c5598b01e86db0762b';
   const params = new URLSearchParams({
-    apiKey: NEWSAPI_KEY,
+    token: GNEWS_KEY,
     q: query,
-    language: 'ar',
-    pageSize: '12',
-    sortBy: 'publishedAt'
+    lang: 'en',
+    max: '12',
+    sortby: 'publishedAt'
   });
-  const res = await fetch(`https://newsapi.org/v2/everything?${params}`);
-  if (!res.ok) throw new Error(`NewsAPI error ${res.status}`);
+  const res = await fetch(`https://gnews.io/api/v4/search?${params}`);
+  if (!res.ok) throw new Error(`GNews error ${res.status}`);
   const data = await res.json();
-  if (data.status !== 'ok') throw new Error(data.message || 'NewsAPI error');
   const articles = (data.articles || []).map((item, i) => ({
     title:     item.title || '',
-    link:      item.url  || '#',
+    link:      item.url || '#',
     source:    item.source?.name || '',
     date:      item.publishedAt?.slice(0,10) || '',
     snippet:   item.description || '',
-    thumbnail: item.urlToImage || '',
+    thumbnail: item.image || '',
     emoji:     NEWS_EMOJIS[i % NEWS_EMOJIS.length]
   }));
   newsCache[category] = articles;
