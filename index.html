@@ -703,13 +703,13 @@ html,body{height:100%;font-family:'Outfit',sans-serif;background:var(--bg);color
       <div class="news-grid" id="news-grid"></div>
     </div>
 
-    <!-- ═══════════════ ANALYTICS ═══════════════ -->
+
+<!-- ═══════════════ ANALYTICS ═══════════════ -->
     <div class="page" id="page-analytics" style="min-height:unset;height:100vh">
       <iframe
         id="analytics-iframe"
-        src="cinematrix_analytics_v2.html"
+        src=""
         title="CineMatrix Analytics"
-        loading="lazy"
         allowfullscreen
         style="width:100%;height:100%;border:none;display:block">
       </iframe>
@@ -843,6 +843,7 @@ function nav(page, el) {
   if (page === 'news') renderNews();
   if (page === 'recommend') initRec();
   if (page === 'year') initYear();
+  if (page === 'analytics') { const f=$('analytics-iframe'); if(!f.src||f.src==='about:blank') f.src='cinamatrix_analytics_v2.html'; }
 
   // Galaxy & TimeMachine are iframes — no JS init needed here.
   // The iframes load their own standalone HTML files:
@@ -1534,13 +1535,9 @@ function renderWorldTopList() {
 }
 
 // ══════════════════════════════════════════════════════════
-// ART NEWS (via news_proxy.py on :8888 or /api/news on Vercel)
+// ART NEWS (via Cloudflare Worker)
 // ══════════════════════════════════════════════════════════
-// Local: Start proxy: python news_proxy.py
-// Production: Runs on Vercel serverless functions
-const PROXY_URL = window.location.hostname === 'localhost' 
-  ? 'http://localhost:8888/news'
-  : '/api/news';
+const WORKER_URL = 'https://red-mountain-e437.s-anas-mostafa.workers.dev';
 
 const NEWS_QUERIES = {
   all:         'أفلام سينما مسلسلات 2026',
@@ -1556,18 +1553,16 @@ let newsCategory = 'all', newsCache = {};
 async function fetchNews(category) {
   if (newsCache[category]) return newsCache[category];
   const query = NEWS_QUERIES[category] || NEWS_QUERIES.all;
-  const params = new URLSearchParams({ q: query, num: '12', hl: 'ar', gl: 'eg' });
-  const res = await fetch(`${PROXY_URL}?${params}`);
-  if (!res.ok) throw new Error(`Proxy error ${res.status} — is news_proxy.py running?`);
+  const res = await fetch(`${WORKER_URL}?q=${encodeURIComponent(query)}&hl=ar&gl=eg`);
+  if (!res.ok) throw new Error(`Worker error ${res.status}`);
   const data = await res.json();
-  if (data.error) throw new Error(data.error);
-  const articles = (data.news_results || []).map((item, i) => ({
+  const articles = (data.articles || []).map((item, i) => ({
     title:     item.title || '',
-    link:      item.link  || '#',
-    source:    item.source || '',
-    date:      item.date  || '',
-    snippet:   item.snippet || '',
-    thumbnail: item.thumbnail || '',
+    link:      item.url   || '#',
+    source:    item.source?.name || '',
+    date:      item.publishedAt || '',
+    snippet:   item.description || '',
+    thumbnail: item.image || '',
     emoji:     NEWS_EMOJIS[i % NEWS_EMOJIS.length]
   }));
   newsCache[category] = articles;
