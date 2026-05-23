@@ -163,7 +163,7 @@ html,body{height:100%;font-family:'Outfit',sans-serif;background:var(--bg);color
 
 /* ── Hero banner ── */
 .hero-banner{position:relative;height:420px;overflow:hidden;background:var(--bg2);padding-top:56px}
-.hero-backdrop{position:absolute;inset:0;background-size:cover;background-position:center center;filter:brightness(0.55) saturate(1.1);transition:background-image 0.5s ease}
+.hero-backdrop{position:absolute;inset:0;background-size:cover;background-repeat:no-repeat;background-position:center center;filter:brightness(0.55) saturate(1.1);transition:background-image 0.5s ease}
 .hero-gradient{position:absolute;inset:0;background:linear-gradient(to right,rgba(8,11,18,0.88) 35%,transparent),linear-gradient(to top,rgba(8,11,18,0.95) 0%,transparent 50%)}
 .hero-content{position:relative;padding:50px 48px 36px;display:flex;flex-direction:column;justify-content:flex-end;height:100%}
 .hero-tag{font-size:9px;letter-spacing:4px;color:var(--gold);text-transform:uppercase;margin-bottom:10px}
@@ -230,7 +230,7 @@ html,body{height:100%;font-family:'Outfit',sans-serif;background:var(--bg);color
 .time-badge{font-size:10px;background:var(--gold-dim);border:1px solid rgba(201,168,76,0.3);color:var(--gold);padding:2px 8px;border-radius:4px}
 
 /* ── Top Rated Page ── */
-#top-rated-bg{position:fixed;top:0;left:0;right:0;bottom:0;background-size:cover;background-position:center center;filter:brightness(0.3) saturate(0.85) contrast(1.15);transition:background-image 0.5s ease;pointer-events:none;z-index:0}
+#top-rated-bg{position:fixed;top:0;left:0;right:0;bottom:0;background-size:cover;background-repeat:no-repeat;background-position:center center;filter:brightness(0.3) saturate(0.85) contrast(1.15);transition:background-image 0.5s ease;pointer-events:none;z-index:0}
 #page-top-rated .page-inner{position:relative;z-index:1}
 .top-rated-item{display:flex;align-items:center;gap:16px;padding:14px 28px;border-bottom:1px solid var(--border);cursor:pointer;transition:background 0.2s;position:relative}
 .top-rated-item:hover{background:rgba(255,255,255,0.03)}
@@ -923,20 +923,20 @@ function initHome() {
 }
 
 function updateHero(m) {
-  const bd = getBackdropUrl(m);
   const el = $('home-backdrop');
-  if (bd.url) {
-    el.style.backgroundImage = `url(${bd.url})`;
-    // If only a portrait poster is available, position it right and shrink it gracefully
-    if (bd.isPortrait) {
-      el.style.backgroundSize = 'auto 100%';
-      el.style.backgroundPosition = 'right center';
-      el.style.backgroundRepeat = 'no-repeat';
-    } else {
-      el.style.backgroundSize = 'cover';
-      el.style.backgroundPosition = 'center center';
-      el.style.backgroundRepeat = 'no-repeat';
-    }
+  const bd = m.backdrop_url || m.backdrop || m.backdrop_path || '';
+  if (bd) {
+    const url = bd.replace(/\/t\/p\/[^\/]+\//, '/t/p/w1280/');
+    el.style.backgroundImage = `url(${url})`;
+    el.style.backgroundSize = 'cover';
+    el.style.backgroundPosition = 'center center';
+  } else if (m.poster_url && m.poster_url.includes('image.tmdb.org')) {
+    // Use poster but scale it to fill naturally without tiling
+    const url = m.poster_url.replace(/\/t\/p\/[^\/]+\//, '/t/p/w780/');
+    el.style.backgroundImage = `url(${url})`;
+    el.style.backgroundSize = 'auto 100%';
+    el.style.backgroundPosition = 'right center';
+    el.style.backgroundRepeat = 'no-repeat';
   } else {
     el.style.backgroundImage = '';
   }
@@ -1059,12 +1059,17 @@ function renderTopRated() {
 }
 
 function trHover(m) {
-  const bd = getBackdropUrl(m);
   const el = $('top-rated-bg');
-  if (bd.url) {
-    el.style.backgroundImage = `url(${bd.url})`;
-    el.style.backgroundSize = bd.isPortrait ? 'auto 100%' : 'cover';
-    el.style.backgroundPosition = bd.isPortrait ? 'right center' : 'center center';
+  const bd = m.backdrop_url || m.backdrop || m.backdrop_path || '';
+  if (bd) {
+    const url = bd.replace(/\/t\/p\/[^\/]+\//, '/t/p/w1280/');
+    el.style.backgroundImage = `url(${url})`;
+    el.style.backgroundSize = 'cover';
+    el.style.backgroundPosition = 'center center';
+    el.style.backgroundRepeat = 'no-repeat';
+  } else {
+    // No landscape backdrop — just clear it, don't use portrait poster
+    el.style.backgroundImage = '';
   }
 }
 
