@@ -752,6 +752,15 @@ html,body{height:100%;font-family:'Outfit',sans-serif;background:var(--bg);color
   </main>
 </div>
 
+<!-- VIDEO PLAYER OVERLAY -->
+<div id="player-overlay" style="display:none;position:fixed;inset:0;background:#000;z-index:9999;flex-direction:column">
+  <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 16px;background:#111">
+    <span id="player-title" style="color:#fff;font-size:14px;font-weight:600"></span>
+    <button onclick="closePlayer()" style="background:none;border:none;color:#fff;font-size:22px;cursor:pointer;line-height:1">✕</button>
+  </div>
+  <iframe id="player-frame" src="" allowfullscreen allow="autoplay;fullscreen" style="flex:1;border:none;width:100%;height:100%"></iframe>
+</div>
+
 <!-- MOVIE DETAIL MODAL -->
 <div id="modal-overlay" onclick="closeModal(event)">
   <div id="modal-box">
@@ -970,7 +979,10 @@ function openMovieObj(m) {
     <div class="detail-desc">${safe(overview)}</div>
     ${m.tagline?`<div style="font-style:italic;color:var(--gold);font-size:12px;margin-top:8px">"${safe(m.tagline)}"</div>`:''}
     ${m.trailer_url?`<a href="${m.trailer_url}" target="_blank" class="trailer-btn">▷ Watch Trailer on YouTube</a>`:''}
-    <button id="watch-now-btn" data-tmdb="${m.id||''}" data-mtype="${m.media_type==='tv'?'tv':'movie'}" onclick="watchOnPlayIMDB(this.dataset.tmdb,this.dataset.mtype,this)" style="display:inline-flex;align-items:center;gap:8px;background:#e50914;border:none;border-radius:6px;padding:9px 18px;color:#fff;font-size:13px;font-weight:600;cursor:pointer;margin-top:8px;transition:opacity 0.2s" onmouseover="this.style.opacity='0.85'" onmouseout="this.style.opacity='1'">▶ Watch Now</button>
+    <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-top:8px">
+      <button data-tmdb="${m.id||''}" data-mtype="${m.media_type==='tv'?'tv':'movie'}" data-title="${(m.title||m.name||''||'Unknown').replace(/"/g,'&quot;')}" onclick="openPlayer(this.dataset.tmdb,this.dataset.mtype,this.dataset.title)" style="display:inline-flex;align-items:center;gap:8px;background:#e50914;border:none;border-radius:6px;padding:9px 18px;color:#fff;font-size:13px;font-weight:600;cursor:pointer;transition:opacity 0.2s" onmouseover="this.style.opacity='0.85'" onmouseout="this.style.opacity='1'">▶ Watch Now</button>
+      <a href="https://chromewebstore.google.com/detail/ublock-origin-lite/ddkjiahejlhfcafbddmgiahcphecmpfh?hl=en&pli=1" target="_blank" style="font-size:11px;color:var(--text2);text-decoration:none;display:inline-flex;align-items:center;gap:5px;opacity:0.75;transition:opacity 0.2s" onmouseover="this.style.opacity='1'" onmouseout="this.style.opacity='0.75'">🛡️ Use uBlock Origin to remove unwanted ads</a>
+    </div>
     ${cast.length?`
     <div class="detail-section-lbl">Cast</div>
     <div class="cast-row">
@@ -1000,27 +1012,27 @@ function closeModal(e) {
     $('modal-overlay').classList.remove('open');
 }
 
-async function watchOnPlayIMDB(tmdbId, mediaType, btn) {
+function openPlayer(tmdbId, mediaType, title) {
   if (!tmdbId) { alert('No movie ID available.'); return; }
   mediaType = mediaType || 'movie';
-  if (btn) { btn.textContent = '⏳ Loading...'; btn.disabled = true; }
-  try {
-    const API_KEY = '3acd15407e84e0c28809d95ed5e7645a';
-    const res = await fetch(`https://api.themoviedb.org/3/${mediaType}/${tmdbId}/external_ids?api_key=${API_KEY}`);
-    if (!res.ok) throw new Error(`TMDB error ${res.status}`);
-    const data = await res.json();
-    const imdbId = data.imdb_id;
-    if (imdbId) {
-      window.open(`https://www.playimdb.com/title/${imdbId}/`, '_blank');
-    } else {
-      alert('No IMDb link found for this title.');
-    }
-  } catch (err) {
-    alert('Watch link failed: ' + err.message);
-  } finally {
-    if (btn) { btn.innerHTML = '▶ Watch Now'; btn.disabled = false; }
-  }
+  const src = mediaType === 'tv'
+    ? `https://vidsrc.to/embed/tv/${tmdbId}`
+    : `https://vidsrc.to/embed/movie/${tmdbId}`;
+  document.getElementById('player-frame').src = src;
+  document.getElementById('player-title').textContent = title || '';
+  const overlay = document.getElementById('player-overlay');
+  overlay.style.display = 'flex';
+  document.body.style.overflow = 'hidden';
 }
+
+function closePlayer() {
+  document.getElementById('player-frame').src = '';
+  document.getElementById('player-overlay').style.display = 'none';
+  document.body.style.overflow = '';
+}
+
+// close player on Escape key
+document.addEventListener('keydown', e => { if (e.key === 'Escape') closePlayer(); });
 
 // ══════════════════════════════════════════════════════════
 // TOP RATED
