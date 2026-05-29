@@ -970,6 +970,7 @@ function openMovieObj(m) {
     <div class="detail-desc">${safe(overview)}</div>
     ${m.tagline?`<div style="font-style:italic;color:var(--gold);font-size:12px;margin-top:8px">"${safe(m.tagline)}"</div>`:''}
     ${m.trailer_url?`<a href="${m.trailer_url}" target="_blank" class="trailer-btn">▷ Watch Trailer on YouTube</a>`:''}
+    <button id="watch-now-btn" onclick="watchOnPlayIMDB(${JSON.stringify(m.id||'')}, '${m.media_type==='tv'?'tv':'movie'}')" style="display:inline-flex;align-items:center;gap:8px;background:#e50914;border:none;border-radius:6px;padding:9px 18px;color:#fff;font-size:13px;font-weight:600;cursor:pointer;margin-top:8px;transition:opacity 0.2s" onmouseover="this.style.opacity='0.85'" onmouseout="this.style.opacity='1'">▶ Watch Now</button>
     ${cast.length?`
     <div class="detail-section-lbl">Cast</div>
     <div class="cast-row">
@@ -997,6 +998,27 @@ function openMovieObj(m) {
 function closeModal(e) {
   if (!e || e.target === $('modal-overlay') || e.currentTarget?.classList?.contains('modal-close'))
     $('modal-overlay').classList.remove('open');
+}
+
+async function watchOnPlayIMDB(tmdbId, mediaType = 'movie') {
+  const btn = document.getElementById('watch-now-btn');
+  if (!tmdbId) { alert('No ID available for this title.'); return; }
+  if (btn) { btn.textContent = '⏳ Loading...'; btn.disabled = true; }
+  try {
+    const API_KEY = '3acd15407e84e0c28809d95ed5e7645a';
+    const res = await fetch(`https://api.themoviedb.org/3/${mediaType}/${tmdbId}/external_ids?api_key=${API_KEY}`);
+    const data = await res.json();
+    const imdbId = data.imdb_id;
+    if (imdbId) {
+      window.open(`https://www.playimdb.com/title/${imdbId}/`, '_blank');
+    } else {
+      alert('No IMDb link available for this title.');
+    }
+  } catch (err) {
+    alert('Could not load watch link. Try again.');
+  } finally {
+    if (btn) { btn.textContent = '▶ Watch Now'; btn.disabled = false; }
+  }
 }
 
 // ══════════════════════════════════════════════════════════
