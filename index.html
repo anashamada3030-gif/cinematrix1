@@ -1258,8 +1258,12 @@ function doSearch() {
   const results = $('search-results');
 
   if (searchType === 'actor') {
+    if (!_phase2Done && !DATA.actors.length) {
+      results.innerHTML = `<div style="padding:20px;color:var(--text2);font-size:12px">⏳ Actor library is still loading…</div>`;
+      return;
+    }
     const data = DATA.actors.filter(a => !q || a.name.toLowerCase().includes(q));
-    results.innerHTML = data.slice(0,30).map(a => {
+    results.innerHTML = data.slice(0,60).map(a => {
       const r = movieRegistry.push(a) - 1;
       return `<div class="movie-card" onclick="openActorObj(movieRegistry[${r}])">
         <div class="poster-wrap">${a.profile_url?`<img src="${a.profile_url}" class="poster-img" loading="lazy" onerror="this.style.opacity=0.2">`:'<span style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);font-size:32px">👤</span>'}</div>
@@ -1270,28 +1274,58 @@ function doSearch() {
     return;
   }
 
-  const pool = [...DATA.moviesSeries, ...DATA.newReleases, ...DATA.topRated];
+  // Build the search pool — prefer full library (phase 2); fall back to seed pool
+  // Deduplicate by id+media_type across all sources
   const seen = new Set();
+  const addPool = (arr) => arr.forEach(m => {
+    const k = String(m.id)+String(m.media_type);
+    if (!seen.has(k)) { seen.add(k); pool.push(m); }
+  });
+  const pool = [];
+  // Always include full library if loaded; otherwise use seed + dynamic CSVs
+  addPool(DATA.moviesSeries);
+  addPool(DATA.newReleases);
+  addPool(DATA.topRated);
+
   const data = pool.filter(m => {
-    const key = m.id + m.media_type;
-    if (seen.has(key)) return false;
-    seen.add(key);
     if (searchType === 'movie' && m.media_type !== 'movie') return false;
     if (searchType === 'tv'    && m.media_type !== 'tv')    return false;
     if (searchGenre && !(m.genres||'').toLowerCase().includes(searchGenre.toLowerCase())) return false;
     if (searchMinRating && parseFloat(m.vote_average||0) < searchMinRating) return false;
-    if (q) {
-      const t = (m.title||'').toLowerCase();
-      return t.includes(q) || (m.cast||'').toLowerCase().includes(q) || (m.overview||'').toLowerCase().includes(q);
-    }
-    return true;
+    if (!q) return true;
+    const title   = (m.title||'').toLowerCase();
+    const origTit = (m.original_title||'').toLowerCase();
+    const nameF   = (m.name||'').toLowerCase();       // some records keep raw 'name'
+    const cast    = (m.cast||'').toLowerCase();
+    const overview= (m.overview||'').toLowerCase();
+    const keywords= (m.keywords||'').toLowerCase();
+    return title.includes(q) || origTit.includes(q) || nameF.includes(q)
+        || cast.includes(q)  || overview.includes(q) || keywords.includes(q);
   });
 
-  results.innerHTML = data.slice(0,30).map(m => {
+  // Sort: exact title match first, then starts-with, then rest; then by rating desc
+  const ranked = q ? data.sort((a,b) => {
+    const ta = (a.title||a.name||'').toLowerCase();
+    const tb = (b.title||b.name||'').toLowerCase();
+    const ea = ta === q, eb = tb === q;
+    if (ea !== eb) return ea ? -1 : 1;
+    const sa = ta.startsWith(q), sb = tb.startsWith(q);
+    if (sa !== sb) return sa ? -1 : 1;
+    return parseFloat(b.vote_average||0) - parseFloat(a.vote_average||0);
+  }) : data;
+
+  const notLoaded = !_phase2Done && !q;
+  const hint = notLoaded
+    ? `<div style="grid-column:1/-1;padding:8px 0 4px;font-size:11px;color:var(--gold)">⏳ Full library still loading — showing ${pool.length.toLocaleString()} titles so far</div>`
+    : (q && ranked.length === 0 && !_phase2Done)
+    ? `<div style="grid-column:1/-1;padding:8px 0 4px;font-size:11px;color:var(--text2)">⏳ Full library still loading — search results may be incomplete</div>`
+    : '';
+
+  results.innerHTML = hint + ranked.slice(0,100).map(m => {
     const r = getMovieIdx(m);
     return `<div class="movie-card" onclick="openMovieObj(movieRegistry[${r}])">
       <div class="poster-wrap">${m.poster_url?`<img src="${m.poster_url}" class="poster-img" loading="lazy" onerror="this.style.opacity=0.2">`:'<span style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);font-size:32px">🎬</span>'}</div>
-      <div class="card-title">${safe(m.title||'')}</div>
+      <div class="card-title">${safe(m.title||m.name||'')}</div>
       <div class="card-meta"><span class="card-rating">★${parseFloat(m.vote_average||0).toFixed(1)}</span> ${m.media_type==='tv'?'📺':'🎬'} ${(m.release_date||m.year||'').slice(0,4)}</div>
     </div>`;
   }).join('');
@@ -1302,7 +1336,11 @@ function doSearch() {
 // ══════════════════════════════════════════════════════════
 let actorsGridInited = false;
 
-function initActorsGrid() {
+function initActorsGrid(force) {
+  if (!DATA.actors.length && !force) {
+    $('actors-grid').innerHTML = `<div style="grid-column:1/-1;padding:20px;color:var(--text2);font-size:12px">⏳ Actor library loading…</div>`;
+    return;
+  }
   actorsGridInited = true;
   $('actors-grid').innerHTML = DATA.actors.slice(0,25).map(a => {
     const r = movieRegistry.push(a) - 1;
@@ -1993,21 +2031,26 @@ function parseCSV(url) {
   });
 }
 
+// ── Phase tracking ────────────────────────────────────────────────────────────
+let _phase2Done = false;
+let _phase2Promise = null;
+
 async function loadAllData() {
   showLoadingOverlay('Loading cinema data…');
   const csvDir = 'csv_output/';
+
+  // ══ PHASE 1 — small, critical CSVs only (~5–10 MB) ════════════════════════
+  // static_movies_series.csv is intentionally excluded — loaded async in Phase 2
   const [
-    newReleases, topRated, reviews, moviesSeries, awards, moviesByYear,
-    actors, moodData, recPool, cinemaGalaxy, cinemaWorld, egyptRaw,
+    newReleases, topRated, reviews, awards, moviesByYear,
+    moodData, recPool, cinemaGalaxy, cinemaWorld, egyptRaw,
     genreFreq, coocRaw, pointCloud, egyptPivotRaw
   ] = await Promise.all([
     parseCSV(csvDir+'dynamic_new_releases.csv'),
     parseCSV(csvDir+'dynamic_top_rated.csv'),
     parseCSV(csvDir+'dynamic_reviews.csv'),
-    parseCSV(csvDir+'static_movies_series.csv'),
     parseCSV(csvDir+'static_awards.csv'),
     parseCSV(csvDir+'static_movies_by_year.csv'),
-    parseCSV(csvDir+'static_actors.csv'),
     parseCSV(csvDir+'recommendation_mood.csv'),
     parseCSV(csvDir+'recommendation_pool.csv'),
     parseCSV(csvDir+'static_cinema_galaxy.csv'),
@@ -2019,8 +2062,19 @@ async function loadAllData() {
     parseCSV(csvDir+'egypt_cinema_pivoted_days.csv')
   ]);
 
-  Object.assign(DATA, { newReleases, topRated, reviews, moviesSeries, awards, moviesByYear,
-    actors, moodData, recPool, cinemaGalaxy, cinemaWorld, genreFreq, pointCloud });
+  // actors, moviesByYear deferred too — load after UI is visible
+  Object.assign(DATA, { newReleases, topRated, reviews, awards, moviesByYear,
+    moodData, recPool, cinemaGalaxy, cinemaWorld, genreFreq, pointCloud });
+
+  // Use newReleases + topRated as the initial moviesSeries stand-in so
+  // Home, Top Rated, Categories all work immediately with 0 delay
+  const seedPool = [...newReleases, ...topRated, ...recPool];
+  const seedSeen = new Set();
+  DATA.moviesSeries = seedPool.filter(m => {
+    const k = String(m.id)+m.media_type;
+    if (seedSeen.has(k)) return false;
+    seedSeen.add(k); return true;
+  });
 
   // ── Step 1: Build days map from pivoted CSV (Title → { dayLabel → Set of cinemas }) ──
   // Columns: Title | Cinema Name | Friday 08 | Saturday 09 | Sunday 10 | Monday 11 | Tuesday 12
@@ -2105,6 +2159,60 @@ async function loadAllData() {
 
   hideLoadingOverlay();
   initAll();
+
+  // ══ PHASE 2 — load big files in background after UI is visible ═══════════
+  _phase2Promise = (async () => {
+    try {
+      updateLoadingBadge('Loading full library…');
+      const [moviesSeries, actors] = await Promise.all([
+        parseCSV(csvDir+'static_movies_series.csv'),
+        parseCSV(csvDir+'static_actors.csv')
+      ]);
+      DATA.moviesSeries = moviesSeries;
+      DATA.actors       = actors;
+      _phase2Done = true;
+      buildSearchIndex();
+      updateLoadingBadge(null);
+      // Refresh any page that's currently open and uses the full library
+      if (currentPage === 'search')      doSearch();
+      if (currentPage === 'categories')  renderCategoryGrid();
+      if (currentPage === 'year')        renderYear();
+      if (currentPage === 'actor')       initActorsGrid(true);
+    } catch(e) {
+      updateLoadingBadge(null);
+    }
+  })();
+}
+
+// ── Thin search index (id → record) built once phase 2 is done ───────────────
+let _searchIndex = null; // Map: normalised title token → [record, ...]
+function buildSearchIndex() {
+  _searchIndex = new Map();
+  for (const m of DATA.moviesSeries) {
+    const tokens = new Set([
+      (m.title||'').toLowerCase(),
+      (m.original_title||'').toLowerCase(),
+      (m.name||'').toLowerCase()
+    ]);
+    for (const tok of tokens) {
+      if (!tok) continue;
+      if (!_searchIndex.has(tok)) _searchIndex.set(tok, []);
+      _searchIndex.get(tok).push(m);
+    }
+  }
+}
+
+// Small badge shown in top-right area while phase 2 loads
+function updateLoadingBadge(msg) {
+  let badge = document.getElementById('p2-badge');
+  if (!msg) { badge?.remove(); return; }
+  if (!badge) {
+    badge = document.createElement('div');
+    badge.id = 'p2-badge';
+    badge.style.cssText = 'position:fixed;bottom:14px;right:16px;z-index:600;background:var(--bg2);border:1px solid var(--border2);border-radius:20px;padding:5px 14px;font-size:11px;color:var(--gold);display:flex;align-items:center;gap:8px;pointer-events:none';
+    document.body.appendChild(badge);
+  }
+  badge.innerHTML = `<span style="width:8px;height:8px;border-radius:50%;border:2px solid var(--gold);border-top-color:transparent;display:inline-block;animation:spin 0.8s linear infinite"></span>${msg}`;
 }
 
 function showLoadingOverlay(msg) {
