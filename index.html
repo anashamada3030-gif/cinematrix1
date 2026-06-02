@@ -2143,7 +2143,7 @@ let _phase2Promise = null;
 
 async function loadAllData() {
 showLoadingOverlay('Loading cinema data…');
-const csvDir = 'csv_output/';
+const csvDir = 'csv_output/'; // global — used by categories, search, etc.
 
 // ══ PHASE 1 — small, critical CSVs only (~5–10 MB) ════════════════════════
 // static_movies_series.csv is intentionally excluded — loaded async in Phase 2
