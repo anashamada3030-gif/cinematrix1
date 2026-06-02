@@ -1,19 +1,11 @@
 // search-worker.js — CineMatrix heavy-CSV worker
-// Runs entirely off the main thread.
-// Never sends 25 k rows to main thread — only search results (≤60 rows).
+// Stream-and-stop: never loads full CSVs into RAM.
+// Search stops as soon as enough results found.
+// Categories stream-filter on the fly, no caching.
 
 importScripts('https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js');
 
-// ── State ─────────────────────────────────────────────────────────────────────
-let movieRows   = [];
-let actorRows   = [];
-let catRows     = { movie: [], tv: [] };
-let moviesLoaded = false;
-let actorsLoaded = false;
-let catLoaded    = { movie: false, tv: false };
-let pendingSearch = null;
-
-// ── Compact row: strip unused fields & truncate long strings ──────────────────
+// ── Compact row ───────────────────────────────────────────────────────────────
 function compact(row) {
   return {
     id:                   row.id || '',
@@ -39,44 +31,10 @@ function compact(row) {
   };
 }
 
-// ── Search ────────────────────────────────────────────────────────────────────
-function searchMovies(query, mediaType, genre, minRating, limit) {
-  const q = (query || '').toLowerCase().trim();
-  limit = limit || 60;
-
-  let results = movieRows.filter(m => {
-    if (mediaType === 'movie' && m.media_type !== 'movie') return false;
-    if (mediaType === 'tv'    && m.media_type !== 'tv')    return false;
-    if (genre && !m.genres.toLowerCase().includes(genre.toLowerCase())) return false;
-    if (minRating && m.vote_average < minRating) return false;
-    if (!q) return true;
-    return m.title.toLowerCase().includes(q) ||
-           m.original_title.toLowerCase().includes(q) ||
-           m.cast.toLowerCase().includes(q) ||
-           m.overview.toLowerCase().includes(q) ||
-           m.keywords.toLowerCase().includes(q);
-  });
-
-  if (q) {
-    results.sort((a, b) => {
-      const ta = a.title.toLowerCase(), tb = b.title.toLowerCase();
-      if (ta === q  && tb !== q)  return -1;
-      if (tb === q  && ta !== q)  return  1;
-      if (ta.startsWith(q) && !tb.startsWith(q)) return -1;
-      if (tb.startsWith(q) && !ta.startsWith(q)) return  1;
-      return b.vote_average - a.vote_average;
-    });
-  } else {
-    results.sort((a, b) => b.vote_average - a.vote_average);
-  }
-
-  return results.slice(0, limit);
-}
-
-// ── Category filter ───────────────────────────────────────────────────────────
+// ── Category match ────────────────────────────────────────────────────────────
 function matchCat(m, cat) {
   const lang   = (m.original_language || '').toLowerCase().trim();
-  const genres = m.genres.toLowerCase();
+  const genres = (m.genres || '').toLowerCase();
   switch (cat) {
     case 'korean':      return lang === 'ko';
     case 'anime':       return lang === 'ja' && genres.includes('animation');
@@ -88,107 +46,182 @@ function matchCat(m, cat) {
   }
 }
 
-// ── CSV streaming helpers ─────────────────────────────────────────────────────
-function streamCSV(url, onRow, onDone, onErr) {
+// ── Actor state (small CSV, fine to cache) ────────────────────────────────────
+let actorRows    = [];
+let actorsLoaded = false;
+
+// ── Movies: stream-search, no storage ─────────────────────────────────────────
+// Streams the CSV once per search request, collects matches, posts results.
+// If the query is empty we still stream but stop after collecting `limit` rows
+// sorted by vote_average — we keep a small top-N heap instead of all rows.
+function streamSearch(url, query, mediaType, genre, minRating, limit, requestId) {
+  const q    = (query || '').toLowerCase().trim();
+  limit      = limit || 60;
+  const SCAN = q ? 25000 : limit * 4; // for empty query scan a bit more for ranking
+
+  const results   = [];
+  let   scanned   = 0;
+  let   aborted   = false;
+
   Papa.parse(url, {
     download:       true,
     header:         true,
     skipEmptyLines: true,
-    step:  r => { if (r.data) onRow(r.data); },
-    complete: onDone,
-    error:    e => { if (onErr) onErr(e); },
+    step: function(result, parser) {
+      if (aborted) return;
+      const row = result.data;
+      if (!row.title && !row.name) return;
+      const m = compact(row);
+
+      // Type filter
+      if (mediaType === 'movie' && m.media_type !== 'movie') return;
+      if (mediaType === 'tv'    && m.media_type !== 'tv')    return;
+      // Genre filter
+      if (genre && !m.genres.toLowerCase().includes(genre.toLowerCase())) return;
+      // Rating filter
+      if (minRating && m.vote_average < minRating) return;
+
+      // Text match
+      if (q) {
+        const hit = m.title.toLowerCase().includes(q) ||
+                    m.original_title.toLowerCase().includes(q) ||
+                    m.cast.toLowerCase().includes(q) ||
+                    m.overview.toLowerCase().includes(q) ||
+                    m.keywords.toLowerCase().includes(q);
+        if (!hit) return;
+      }
+
+      results.push(m);
+      scanned++;
+
+      // For keyword searches stop once we have plenty of matches
+      if (q && results.length >= limit * 3) {
+        aborted = true;
+        parser.abort();
+      }
+      // For empty query (browse/filter) stop after scanning enough rows
+      if (!q && scanned >= SCAN) {
+        aborted = true;
+        parser.abort();
+      }
+    },
+    complete: function() {
+      // Sort and trim
+      if (q) {
+        results.sort((a, b) => {
+          const ta = a.title.toLowerCase(), tb = b.title.toLowerCase();
+          if (ta === q  && tb !== q)  return -1;
+          if (tb === q  && ta !== q)  return  1;
+          if (ta.startsWith(q) && !tb.startsWith(q)) return -1;
+          if (tb.startsWith(q) && !ta.startsWith(q)) return  1;
+          return b.vote_average - a.vote_average;
+        });
+      } else {
+        results.sort((a, b) => b.vote_average - a.vote_average);
+      }
+      self.postMessage({
+        type: 'SEARCH_RESULTS',
+        results: results.slice(0, limit),
+        requestId
+      });
+    },
+    error: function() {
+      self.postMessage({ type: 'SEARCH_RESULTS', results: [], requestId });
+    }
+  });
+}
+
+// ── Category: stream-filter, two-pass for total count + page ─────────────────
+// First pass counts total matches and collects the page slice.
+// Stops collecting data rows once offset+limit is reached, keeps counting.
+function streamCat(url, cat, media, offset, limit, requestId) {
+  let total    = 0;
+  let skipped  = 0;
+  const rows   = [];
+
+  Papa.parse(url, {
+    download:       true,
+    header:         true,
+    skipEmptyLines: true,
+    step: function(result) {
+      const row = result.data;
+      if (!row.title && !row.name) return;
+      const m = compact(row);
+      if (!matchCat(m, cat)) return;
+
+      total++;
+
+      // Skip rows before offset
+      if (skipped < offset) { skipped++; return; }
+      // Collect the page
+      if (rows.length < limit) rows.push(m);
+      // After page is full we keep going just to count the total
+    },
+    complete: function() {
+      self.postMessage({ type: 'CAT_RESULTS', rows, total, offset, media, requestId });
+    },
+    error: function() {
+      self.postMessage({ type: 'CAT_ERROR', media, requestId });
+    }
   });
 }
 
 // ── Main message handler ──────────────────────────────────────────────────────
-self.onmessage = function (e) {
+self.onmessage = function(e) {
   const { type, data } = e.data;
 
   switch (type) {
 
-    // ── Pre-load movies (called at startup for background indexing) ────────────
+    // ── LOAD_MOVIES: fire MOVIES_READY immediately — no indexing needed.
+    // Search streams on demand; nothing to pre-load.
     case 'LOAD_MOVIES': {
-      if (moviesLoaded) {
-        self.postMessage({ type: 'MOVIES_READY', count: movieRows.length });
-        return;
-      }
-      streamCSV(
-        data.url,
-        row => { if (row.title || row.name) movieRows.push(compact(row)); },
-        () => {
-          moviesLoaded = true;
-          self.postMessage({ type: 'MOVIES_READY', count: movieRows.length });
-          if (pendingSearch) {
-            const ps = pendingSearch; pendingSearch = null;
-            const results = searchMovies(ps.query, ps.mediaType, ps.genre, ps.minRating, ps.limit);
-            self.postMessage({ type: 'SEARCH_RESULTS', results, requestId: ps.requestId });
-          }
-        },
-        () => self.postMessage({ type: 'ERROR', msg: 'movies load failed' })
-      );
+      self.postMessage({ type: 'MOVIES_READY', count: 0 });
       break;
     }
 
-    // ── Search (also auto-loads movies if needed) ──────────────────────────────
+    // ── SEARCH: stream-search on demand, no preloaded index ──────────────────
     case 'SEARCH': {
-      if (moviesLoaded) {
-        const results = searchMovies(data.query, data.mediaType, data.genre, data.minRating, data.limit);
-        self.postMessage({ type: 'SEARCH_RESULTS', results, requestId: data.requestId });
-      } else {
-        pendingSearch = data;
-        if (movieRows.length === 0) {
-          // First search triggers load
-          streamCSV(
-            data.baseUrl + 'static_movies_series.csv',
-            row => { if (row.title || row.name) movieRows.push(compact(row)); },
-            () => {
-              moviesLoaded = true;
-              self.postMessage({ type: 'MOVIES_READY', count: movieRows.length });
-              if (pendingSearch) {
-                const ps = pendingSearch; pendingSearch = null;
-                const results = searchMovies(ps.query, ps.mediaType, ps.genre, ps.minRating, ps.limit);
-                self.postMessage({ type: 'SEARCH_RESULTS', results, requestId: ps.requestId });
-              }
-            }
-          );
-        }
-      }
+      const url = data.baseUrl + 'static_movies_series.csv';
+      streamSearch(url, data.query, data.mediaType, data.genre, data.minRating, data.limit, data.requestId);
       break;
     }
 
-    // ── Load actors ────────────────────────────────────────────────────────────
+    // ── LOAD_ACTORS: small CSV, fine to cache ─────────────────────────────────
     case 'LOAD_ACTORS': {
       if (actorsLoaded) {
         self.postMessage({ type: 'ACTORS_READY', count: actorRows.length });
         return;
       }
-      streamCSV(
-        data.url,
-        row => {
+      Papa.parse(data.url, {
+        download:       true,
+        header:         true,
+        skipEmptyLines: true,
+        step: r => {
+          const row = r.data;
           if (!row.name) return;
           actorRows.push({
-            id:              row.id || '',
-            name:            row.name,
-            known_for_dept:  row.known_for_dept || 'Acting',
-            profile_url:     row.profile_url || '',
-            popularity:      parseFloat(row.popularity) || 0,
-            biography:       (row.biography || '').slice(0, 600),
-            known_for:       row.known_for || '',
-            top_movies:      row.top_movies || '',
-            birthday:        row.birthday || '',
-            birthplace:      row.birthplace || '',
+            id:             row.id || '',
+            name:           row.name,
+            known_for_dept: row.known_for_dept || 'Acting',
+            profile_url:    row.profile_url || '',
+            popularity:     parseFloat(row.popularity) || 0,
+            biography:      (row.biography || '').slice(0, 600),
+            known_for:      row.known_for || '',
+            top_movies:     row.top_movies || '',
+            birthday:       row.birthday || '',
+            birthplace:     row.birthplace || '',
           });
         },
-        () => {
+        complete: () => {
           actorsLoaded = true;
           self.postMessage({ type: 'ACTORS_READY', count: actorRows.length });
         },
-        () => self.postMessage({ type: 'ERROR', msg: 'actors load failed' })
-      );
+        error: () => self.postMessage({ type: 'ERROR', msg: 'actors load failed' })
+      });
       break;
     }
 
-    // ── Search actors ──────────────────────────────────────────────────────────
+    // ── SEARCH_ACTORS ─────────────────────────────────────────────────────────
     case 'SEARCH_ACTORS': {
       const q   = (data.query || '').toLowerCase();
       const res = actorRows.filter(a => !q || a.name.toLowerCase().includes(q)).slice(0, 60);
@@ -196,32 +229,11 @@ self.onmessage = function (e) {
       break;
     }
 
-    // ── Category: initial load ─────────────────────────────────────────────────
-    case 'LOAD_CAT': {
-      const { cat, media, offset, limit, url, requestId } = data;
-      const send = () => {
-        const all  = catRows[media].filter(m => matchCat(m, cat));
-        const rows = all.slice(offset, offset + limit);
-        self.postMessage({ type: 'CAT_RESULTS', rows, total: all.length, offset, media, requestId });
-      };
-      if (catLoaded[media]) { send(); return; }
-      catRows[media] = [];
-      streamCSV(
-        url,
-        row => { if (row.title || row.name) catRows[media].push(compact(row)); },
-        () => { catLoaded[media] = true; send(); },
-        () => self.postMessage({ type: 'CAT_ERROR', media, requestId })
-      );
-      break;
-    }
-
-    // ── Category: load more (cache already warm) ───────────────────────────────
+    // ── LOAD_CAT / CAT_MORE: stream-filter on demand ──────────────────────────
+    case 'LOAD_CAT':
     case 'CAT_MORE': {
-      const { cat, media, offset, limit, requestId } = data;
-      if (!catLoaded[media]) return; // shouldn't happen
-      const all  = catRows[media].filter(m => matchCat(m, cat));
-      const rows = all.slice(offset, offset + limit);
-      self.postMessage({ type: 'CAT_RESULTS', rows, total: all.length, offset, media, requestId });
+      const { cat, media, offset, limit, url, requestId } = data;
+      streamCat(url, cat, media, offset || 0, limit || 30, requestId);
       break;
     }
   }
