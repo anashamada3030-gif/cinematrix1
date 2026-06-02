@@ -1177,12 +1177,147 @@ function renderYear() {
 // ══════════════════════════════════════════════════════════
 // CATEGORIES
 // ══════════════════════════════════════════════════════════
+// CATEGORIES
+// ══════════════════════════════════════════════════════════
+// The scraper stores raw values in the `category` column:
+//   language codes  → "ko", "ja", "ar", "en", ...
+//   genre IDs       → "28", "18", "10749", ...
+//   special lists   → "/movie/popular", "/trending/movie/week", ...
+//   region passes   → "arab_tv_EG", "arab_tv_SA", ...
+//   top-ups         → "topup_lang_ko", "acclaimed", ...
+// We map these raw values to the 6 UI categories using
+// original_language + category string pattern matching.
+
+function matchCategory(m, uiCat) {
+  const lang = (m.original_language || '').toLowerCase();
+  const cat  = (m.category || '').toLowerCase();
+  const genres = (m.genres || '').toLowerCase();
+
+  switch (uiCat) {
+    case 'korean':
+      return lang === 'ko'
+          || cat === 'ko'
+          || cat.includes('topup_lang_ko');
+
+    case 'anime':
+      // Japanese animation
+      return (lang === 'ja' || cat === 'ja' || cat.includes('topup_lang_ja'))
+          && (genres.includes('animation') || genres.includes('anime'));
+
+    case 'egyptian':
+      // Arabic language + Egyptian/Arab region/category signals
+      return (lang === 'ar' || cat === 'ar')
+          && (cat.includes('eg') || cat.includes('egypt') || cat.includes('arab_tv_eg')
+              || (m.production_countries||'').toLowerCase().includes('egypt')
+              || (m.production_countries||'').toLowerCase().includes('eg'))
+          // Also include all Arabic language if no country info
+          || cat === 'ar'
+          || cat.includes('arab_tv_eg')
+          || cat.includes('arab_movie_eg');
+
+    case 'middle_east':
+      // Arabic/Persian/Turkish + other Middle East markers, NOT solely Egyptian
+      return lang === 'ar' || lang === 'fa' || lang === 'tr' || lang === 'he'
+          || cat === 'ar' || cat === 'fa' || cat === 'tr' || cat === 'he'
+          || cat.includes('arab_tv_') || cat.includes('arab_movie_')
+          || cat.includes('topup_lang_ar') || cat.includes('topup_lang_fa')
+          || cat.includes('topup_lang_tr');
+
+    case 'global':
+      // English + French + Spanish + German + Hindi + any top-tier language
+      return lang === 'en' || lang === 'fr' || lang === 'es' || lang === 'de'
+          || lang === 'hi' || lang === 'pt' || lang === 'it' || lang === 'ru'
+          || lang === 'zh' || lang === 'th' || lang === 'id'
+          || cat.startsWith('/movie/') || cat.startsWith('/tv/')
+          || cat.startsWith('/trending/') || cat === 'acclaimed'
+          || cat.includes('topup_lang_en') || cat.includes('topup_lang_fr')
+          || cat.includes('topup_lang_es') || cat.includes('topup_lang_de')
+          || cat.includes('topup_lang_hi');
+
+    case 'musical':
+      return genres.includes('music') || genres.includes('musical')
+          || cat.includes('10402') // TMDB Music genre ID
+          || cat.includes('musical');
+
+    default:
+      return false;
+  }
+}
+
 let catCurrent = 'korean', catMedia = 'movie', catOffset = 0, catPerPage = 25;
+// Cache filtered results per category+media so switching tabs is instant
+const _catCache = {};
+
 function initCategories() { renderCategories(); }
 
 function setCategory(cat, el) {
   catCurrent = cat; catOffset = 0;
   document.querySelectorAll('.cat-tab').forEach(c => c.classList.remove('active'));
+  el.classList.add('active');
+  renderCategories();
+}
+
+function setCatMedia(media, el) {
+  catMedia = media; catOffset = 0;
+  document.querySelectorAll('.cat-media-toggle .toggle-btn').forEach(b => b.classList.remove('active'));
+  el.classList.add('active');
+  renderCategories();
+}
+
+function getCatData() {
+  const key = catCurrent + '|' + catMedia;
+  if (!_catCache[key]) {
+    // Build filtered + deduplicated list, sorted by rating desc
+    const seen = new Set();
+    _catCache[key] = DATA.moviesSeries
+      .filter(m => {
+        if (m.media_type !== catMedia) return false;
+        if (!matchCategory(m, catCurrent)) return false;
+        const id = String(m.id);
+        if (seen.has(id)) return false;
+        seen.add(id);
+        return true;
+      })
+      .sort((a,b) => parseFloat(b.vote_average||0) - parseFloat(a.vote_average||0));
+  }
+  return _catCache[key];
+}
+
+function renderCategories() {
+  const data = getCatData();
+  const grid = $('categories-grid');
+
+  if (!data.length) {
+    grid.innerHTML = '<div style="grid-column:1/-1;padding:40px;text-align:center;color:var(--text2);font-size:13px">No titles found for this category.</div>';
+    $('cat-show-more').style.display = 'none';
+    return;
+  }
+
+  const slice = data.slice(catOffset, catOffset + catPerPage);
+  if (catOffset === 0) {
+    grid.innerHTML = slice.map(m => `<div class="movie-card" onclick="openMovieObj(movieRegistry[${getMovieIdx(m)}])">
+      <div class="poster-wrap">${m.poster_url?`<img src="${m.poster_url}" class="poster-img" loading="lazy" onerror="this.style.opacity=0.2">`:'<div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;font-size:32px">🎬</div>'}</div>
+      <div class="card-title">${safe(m.title||m.name||'')}</div>
+      <div class="card-meta"><span class="card-rating">★${parseFloat(m.vote_average||0).toFixed(1)}</span> ${(m.release_date||m.year||'').slice(0,4)}</div>
+    </div>`).join('');
+  } else {
+    slice.forEach(m => {
+      const div = document.createElement('div');
+      div.className = 'movie-card';
+      div.onclick = () => openMovieObj(m);
+      div.innerHTML = `<div class="poster-wrap">${m.poster_url?`<img src="${m.poster_url}" class="poster-img" loading="lazy" onerror="this.style.opacity=0.2">`:'<div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;font-size:32px">🎬</div>'}</div>
+        <div class="card-title">${safe(m.title||m.name||'')}</div>
+        <div class="card-meta"><span class="card-rating">★${parseFloat(m.vote_average||0).toFixed(1)}</span> ${(m.release_date||m.year||'').slice(0,4)}</div>`;
+      grid.appendChild(div);
+    });
+  }
+  catOffset += catPerPage;
+  $('cat-show-more').style.display = catOffset < data.length ? '' : 'none';
+}
+
+function catShowMore() { renderCategories(); }
+
+
   el.classList.add('active');
   renderCategories();
 }
@@ -2173,6 +2308,7 @@ async function loadAllData() {
       DATA.actors       = actors;
       _phase2Done = true;
       buildSearchIndex();
+      Object.keys(_catCache).forEach(k => delete _catCache[k]); // invalidate with full data
       updateLoadingBadge(null);
       // Re-render any page that was opened before phase 2 finished
       if (currentPage === 'search')     doSearch();
