@@ -9,21 +9,10 @@
 <meta name="theme-color" content="#03050a">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600;800&family=Outfit:wght@300;400;500;600&display=swap" rel="stylesheet">
-<!-- Heavy libraries loaded ON DEMAND only when their page is first opened -->
-<script>
-// Lazy script loader — returns a Promise that resolves once the script is loaded
-const _loadedScripts = {};
-function loadScript(src) {
-  if (_loadedScripts[src]) return _loadedScripts[src];
-  _loadedScripts[src] = new Promise((res, rej) => {
-    const s = document.createElement('script');
-    s.src = src; s.onload = res; s.onerror = rej;
-    document.head.appendChild(s);
-  });
-  return _loadedScripts[src];
-}
-function loadScripts(...srcs) { return Promise.all(srcs.map(loadScript)); }
-</script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.8.5/d3.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/topojson/3.0.2/topojson.min.js"></script>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 :root{
@@ -422,7 +411,7 @@ CineMatrix
 <div class="nav-item" onclick="nav('galaxy',this)"><span class="nav-icon">✦</span>Cinema Galaxy</div>
 <!-- Time Machine → loads timemachine__1_.html in iframe -->
 <div class="nav-item" onclick="nav('timemachine',this)"><span class="nav-icon">⟳</span>Time Machine</div>
-<div class="nav-item" onclick="nav('worldmap',this)"><span class="nav-icon">🌍</span>World Heatmap</div>
+<div class="nav-item" onclick="nav('worldmap',this);initWorldMap()"><span class="nav-icon">🌍</span>World Heatmap</div>
 <div class="nav-item" onclick="nav('news',this)"><span class="nav-icon">◉</span>Art News</div>
 </div>
 <div class="nav-group">
@@ -869,7 +858,6 @@ let currentPage = 'home';
 
 function nav(page, el) {
 closeSidebar();
-_trimRegistry();  // free memory from previous page's card objects
 document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
 document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
 
@@ -884,12 +872,21 @@ if (item.getAttribute('onclick')?.includes(`'${page}'`)) item.classList.add('act
 currentPage = page;
 $('main').scrollTop = 0;
 
-  // Lazy initializers for heavy pages — runs once per page on first visit
+  // Lazy initializers for heavy pages
+  // On-demand init — runs once per page on first visit
   _initPage(page);
 
   // Special cases that always need to run (not just once)
-if (page === 'actor' && !actorsGridInited) ensureActors().then(() => initActorsGrid());
+if (page === 'actor' && !actorsGridInited) initActorsGrid();
 if (page === 'news') renderNews();
+  if (page === 'recommend') initRec();
+  if (page === 'year') initYear();
+  if (page === 'analytics') { const f=$('analytics-iframe'); if(!f.src||f.src==='about:blank') f.src='cinamatrix_analytics_v2.html'; }
+
+  // Galaxy & TimeMachine are iframes — no JS init needed here.
+  // The iframes load their own standalone HTML files:
+  //   cinema_galaxy.html   → full Three.js orbital system
+  //   timemachine__1_.html → 3D tunnel time machine
   // Analytics iframe — load lazily only when first opened
   if (page === 'analytics') {
     const f = $('analytics-iframe');
@@ -954,29 +951,20 @@ function openMovieFromHero() { if (heroMovie) openMovieObj(heroMovie); }
 // ══════════════════════════════════════════════════════════
 // MOVIE REGISTRY
 // ══════════════════════════════════════════════════════════
-// Registry uses a simple ID counter → object map, reset periodically
-// Objects are only stored for the lifetime of the current rendered page
 const movieRegistry = [];
-function getMovieIdx(m) {
-  // Store only the minimal card data needed for onclick — not the full object
-  const slim = { id: m.id, media_type: m.media_type, title: m.title||m.name||'',
-    year: m.year || (m.release_date||'').slice(0,4),
-    vote_average: m.vote_average, genres: m.genres, poster_url: m.poster_url,
-    backdrop_url: m.backdrop_url };
-  return movieRegistry.push(slim) - 1;
-}
+function getMovieIdx(m) { return movieRegistry.push(m) - 1; }
 function openMovie(idx) { const m = movieRegistry[idx]; if (m) openMovieObj(m); }
 
-// Trim registry when it gets too large (e.g. after heavy browsing)
-function _trimRegistry() {
-  if (movieRegistry.length > 2000) { movieRegistry.length = 0; }
-}
-
-async function openMovieObj(m) {
+function openMovieObj(m) {
 const title = m.title || m.name || '';
+const year = (m.release_date||m.year||'').slice(0,4);
 const rating = parseFloat(m.vote_average||0).toFixed(1);
+const genres = (m.genres||'').split(',').map(g=>g.trim()).filter(Boolean);
+const overview = m.overview || m.first_review || 'No description available.';
+const cast = (m.cast||'').split(',').map(s=>s.trim()).filter(Boolean);
+const reviews = DATA.reviews.filter(r => String(r.media_id) === String(m.id)).slice(0,3);
+const awardInfo = DATA.awards.find(a => String(a.id) === String(m.id));
 
-// Show modal immediately with card-level data (no wait)
 $('modal-content').innerHTML = `
  <div class="detail-hero">
    <div class="detail-backdrop" style="${m.poster_url?'background-image:url('+m.poster_url+')':''}"></div>
@@ -987,54 +975,26 @@ $('modal-content').innerHTML = `
        <div class="detail-title">${safe(title)}</div>
        <div class="detail-meta">
          <span style="color:var(--gold)">★ ${rating}</span>
-         <span>${(m.release_date||m.year||'').slice(0,4)}</span>
+         <span>${year}</span>
          <span>${m.media_type==='tv'?'📺 Series':'🎬 Movie'}</span>
-         ${(m.genres||'').split(',').slice(0,3).map(g=>g.trim()).filter(Boolean).map(g=>`<span>${safe(g)}</span>`).join(' · ')}
+         ${genres.slice(0,3).map(g=>`<span>${safe(g)}</span>`).join(' · ')}
+         ${awardInfo?`<span style="color:var(--gold)">🏆 ${safe(awardInfo.award_type)}</span>`:''}
        </div>
      </div>
    </div>
  </div>
- <div class="detail-body" id="detail-body-inner">
-   <div class="detail-section-lbl">Overview</div>
-   <div class="detail-desc" style="color:var(--text3);font-size:12px">⏳ Loading details…</div>
-   <div style="display:flex;flex-direction:column;gap:10px;margin-top:14px">
-     <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
-       <button data-tmdb="${m.id||''}" data-mtype="${m.media_type==='tv'?'tv':'movie'}" data-title="${(m.title||m.name||'Unknown').replace(/"/g,'&quot;')}" onclick="openPlayer(this.dataset.tmdb,this.dataset.mtype,this.dataset.title)" style="display:inline-flex;align-items:center;gap:8px;background:#e50914;border:none;border-radius:6px;padding:9px 18px;color:#fff;font-size:13px;font-weight:600;cursor:pointer;transition:opacity 0.2s" onmouseover="this.style.opacity='0.85'" onmouseout="this.style.opacity='1'">▶ VidSrc</button>
-       <button data-tmdb="${m.id||''}" data-mtype="${m.media_type==='tv'?'tv':'movie'}" onclick="openStreamIMDB(this,this.dataset.tmdb,this.dataset.mtype)" style="display:inline-flex;align-items:center;gap:8px;background:#1a6abf;border:none;border-radius:6px;padding:9px 18px;color:#fff;font-size:13px;font-weight:600;cursor:pointer;transition:opacity 0.2s" onmouseover="this.style.opacity='0.85'" onmouseout="this.style.opacity='1'">🎬 StreamIMDB</button>
-     </div>
-     <a href="https://chromewebstore.google.com/detail/ublock-origin-lite/ddkjiahejlhfcafbddmgiahcphecmpfh?hl=en&pli=1" target="_blank" style="font-size:11px;color:var(--text2);text-decoration:none;display:inline-flex;align-items:center;gap:5px;opacity:0.75;transition:opacity 0.2s" onmouseover="this.style.opacity='1'" onmouseout="this.style.opacity='0.75'">🛡️ Use uBlock Origin to remove unwanted ads</a>
-   </div>
- </div>`;
-$('modal-overlay').classList.add('open');
-
-// Fetch full detail in background (uses Range request — only fetches that one row)
-const detail = await getMovieDetail(m.id);
-const d = detail || m;  // fallback to seed data if detail unavailable
-
-const overview = d.overview || d.first_review || m.overview || 'No description available.';
-const cast = (d.cast||m.cast||'').split(',').map(s=>s.trim()).filter(Boolean);
-
-// Lazy-load reviews & awards only when a modal is opened (shared lazy loaders)
-const [_r, _a] = await Promise.all([ensureReviews(), ensureAwards()]);
-const reviews = DATA.reviews.filter(r => String(r.media_id) === String(m.id)).slice(0,3);
-const awardInfo = DATA.awards.find(a => String(a.id) === String(m.id));
-
-const bodyEl = document.getElementById('detail-body-inner');
-if (!bodyEl || !$('modal-overlay').classList.contains('open')) return; // user closed modal
-
-bodyEl.innerHTML = `
+ <div class="detail-body">
    <div class="detail-section-lbl">Overview</div>
    <div class="detail-desc">${safe(overview)}</div>
-   ${d.tagline?`<div style="font-style:italic;color:var(--gold);font-size:12px;margin-top:8px">"${safe(d.tagline)}"</div>`:''}
-   ${d.trailer_url||m.trailer_url?`<a href="${d.trailer_url||m.trailer_url}" target="_blank" class="trailer-btn">▷ Watch Trailer on YouTube</a>`:''}
+   ${m.tagline?`<div style="font-style:italic;color:var(--gold);font-size:12px;margin-top:8px">"${safe(m.tagline)}"</div>`:''}
+   ${m.trailer_url?`<a href="${m.trailer_url}" target="_blank" class="trailer-btn">▷ Watch Trailer on YouTube</a>`:''}
    <div style="display:flex;flex-direction:column;gap:10px;margin-top:10px">
      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
-       <button data-tmdb="${m.id||''}" data-mtype="${m.media_type==='tv'?'tv':'movie'}" data-title="${(m.title||m.name||'Unknown').replace(/"/g,'&quot;')}" onclick="openPlayer(this.dataset.tmdb,this.dataset.mtype,this.dataset.title)" style="display:inline-flex;align-items:center;gap:8px;background:#e50914;border:none;border-radius:6px;padding:9px 18px;color:#fff;font-size:13px;font-weight:600;cursor:pointer;transition:opacity 0.2s" onmouseover="this.style.opacity='0.85'" onmouseout="this.style.opacity='1'">▶ VidSrc</button>
+       <button data-tmdb="${m.id||''}" data-mtype="${m.media_type==='tv'?'tv':'movie'}" data-title="${(m.title||m.name||''||'Unknown').replace(/"/g,'&quot;')}" onclick="openPlayer(this.dataset.tmdb,this.dataset.mtype,this.dataset.title)" style="display:inline-flex;align-items:center;gap:8px;background:#e50914;border:none;border-radius:6px;padding:9px 18px;color:#fff;font-size:13px;font-weight:600;cursor:pointer;transition:opacity 0.2s" onmouseover="this.style.opacity='0.85'" onmouseout="this.style.opacity='1'">▶ VidSrc</button>
        <button data-tmdb="${m.id||''}" data-mtype="${m.media_type==='tv'?'tv':'movie'}" onclick="openStreamIMDB(this,this.dataset.tmdb,this.dataset.mtype)" style="display:inline-flex;align-items:center;gap:8px;background:#1a6abf;border:none;border-radius:6px;padding:9px 18px;color:#fff;font-size:13px;font-weight:600;cursor:pointer;transition:opacity 0.2s" onmouseover="this.style.opacity='0.85'" onmouseout="this.style.opacity='1'">🎬 StreamIMDB</button>
      </div>
      <a href="https://chromewebstore.google.com/detail/ublock-origin-lite/ddkjiahejlhfcafbddmgiahcphecmpfh?hl=en&pli=1" target="_blank" style="font-size:11px;color:var(--text2);text-decoration:none;display:inline-flex;align-items:center;gap:5px;opacity:0.75;transition:opacity 0.2s" onmouseover="this.style.opacity='1'" onmouseout="this.style.opacity='0.75'">🛡️ Use uBlock Origin to remove unwanted ads</a>
    </div>
-   ${awardInfo?`<div style="margin-top:10px"><span style="color:var(--gold);font-size:12px">🏆 ${safe(awardInfo.award_type)}</span></div>`:''}
    ${cast.length?`
    <div class="detail-section-lbl">Cast</div>
    <div class="cast-row">
@@ -1044,8 +1004,8 @@ bodyEl.innerHTML = `
          <span class="cast-name">${safe(name)}</span>
        </div>`).join('')}
    </div>`:''}
-   ${d.production_countries?`<div style="font-size:11px;color:var(--text2);margin-top:8px">🌍 ${safe(d.production_countries)}</div>`:''}
-   ${d.runtime&&d.runtime!=='[]'?`<div style="font-size:11px;color:var(--text2);margin-top:4px">⏱ ${safe(d.runtime)} min</div>`:''}
+   ${m.production_countries?`<div style="font-size:11px;color:var(--text2);margin-top:8px">🌍 ${safe(m.production_countries)}</div>`:''}
+   ${m.runtime&&m.runtime!=='[]'?`<div style="font-size:11px;color:var(--text2);margin-top:4px">⏱ ${safe(m.runtime)} min</div>`:''}
    ${reviews.length?`
    <div class="detail-section-lbl">Reviews</div>
    <div class="reviews-list">
@@ -1055,7 +1015,9 @@ bodyEl.innerHTML = `
          <div class="review-text">${safe(r.content)}</div>
        </div>`).join('')}
    </div>`:''}
- `;
+ </div>`;
+$('modal-overlay').classList.add('open');
+}
 
 function closeModal(e) {
 if (!e || e.target === $('modal-overlay') || e.currentTarget?.classList?.contains('modal-close'))
@@ -1233,106 +1195,55 @@ content.innerHTML = `<div style="display:grid;grid-template-columns:repeat(auto-
 // loads once per media-type, caches, paginates 30 at a time
 // ══════════════════════════════════════════════════════════
 let catCurrent = 'korean', catMedia = 'movie';
-const CAT_PER_PAGE = 30;
+const CAT_PER_PAGE = 30; // kept for reference
 
-// Cache per media type so switching tabs is instant after first load
-const _catCache = { movie: null, tv: null };   // null=not loaded, []=loading, [...]=ready
-let _catLoadingMedia = null;                   // which media is currently fetching
-let _catShown = 0;                             // cards currently in DOM
+// Category filtering now done in the Worker (search-worker.js matchCat).
+// Only ≤30 rows per page are returned to the main thread.
 
-const _catCsvFile = { movie: 'mega_movies.csv', tv: 'mega_series.csv' };
-
-function _matchCat(m, uiCat) {
-  const lang   = (m.original_language || '').toLowerCase().trim();
-  const genres = (m.genres || '').toLowerCase();
-  switch (uiCat) {
-    case 'korean':      return lang === 'ko';
-    case 'anime':       return lang === 'ja' && genres.includes('animation');
-    case 'egyptian':    return lang === 'ar';
-    case 'middle_east': return ['fa','tr','he','ur'].includes(lang);
-    case 'global':      return ['en','fr','es','de','it','pt','ru','zh','hi'].includes(lang);
-    case 'musical':     return genres.includes('music');
-    default:            return false;
-  }
-}
-
-function _filteredRows() {
-  const pool = _catCache[catMedia] || [];
-  return pool.filter(m => _matchCat(m, catCurrent));
-}
-
-function _makeCatCard(m) {
-  const div = document.createElement('div');
-  div.className = 'movie-card';
-  div.onclick   = () => openMovieObj(m);
-  div.innerHTML = `<div class="poster-wrap">${m.poster_url
-    ? `<img src="${m.poster_url}" class="poster-img" loading="lazy" onerror="this.style.opacity=0.2">`
-    : '<div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;font-size:32px">&#127916;</div>'
-  }</div>
-  <div class="card-title">${safe(m.title || m.name || '')}</div>
-  <div class="card-meta"><span class="card-rating">&#9733;${parseFloat(m.vote_average||0).toFixed(1)}</span></div>`;
-  return div;
-}
-
-function _renderCatPage(resetScroll) {
-  const data = _filteredRows();
-  const grid = $('categories-grid');
-
-  if (data.length === 0) {
-    grid.innerHTML = '<div style="grid-column:1/-1;padding:40px;text-align:center;color:#8892a8;font-size:13px">No titles found for this category.</div>';
-    $('cat-show-more').style.display = 'none';
-    return;
-  }
-
-  if (resetScroll) {
-    grid.innerHTML = '';
-    _catShown = 0;
-  }
-
-  const nextEnd = Math.min(_catShown + CAT_PER_PAGE, data.length);
-  for (let i = _catShown; i < nextEnd; i++) {
-    grid.appendChild(_makeCatCard(data[i]));
-  }
-  _catShown = nextEnd;
-  $('cat-show-more').style.display = _catShown < data.length ? '' : 'none';
-}
-
-function _loadAndRender() {
+// _loadAndRender now delegates to Worker — mega_movies/mega_series never
+// enter the main thread.  Only ≤30 rows per page are returned.
+let _catLoadId = 0;
+async function _loadAndRender() {
+  const cat   = catCurrent;
   const media = catMedia;
+  const grid  = $('categories-grid');
+  const more  = $('cat-show-more');
+  if (!grid) return;
 
-  // Already loaded — render instantly
-  if (_catCache[media] !== null) {
-    _renderCatPage(true);
+  const myId = ++_catLoadId;
+  grid.innerHTML = '<div style="grid-column:1/-1;padding:40px;text-align:center;color:#8892a8;font-size:13px">Loading\u2026</div>';
+  if (more) more.style.display = 'none';
+
+  const result = await _wLoadCat(cat, media, 0);
+  if (myId !== _catLoadId) return; // stale
+  grid.innerHTML = '';
+
+  if (!result.rows || !result.rows.length) {
+    grid.innerHTML = '<div style="grid-column:1/-1;padding:40px;text-align:center;color:#8892a8;font-size:13px">No titles found for this category.</div>';
     return;
   }
 
-  // Already fetching — wait (complete callback will call _renderCatPage)
-  if (_catLoadingMedia === media) return;
+  _appendCatCards(result.rows, grid);
+  grid.dataset.catShown = result.rows.length;
+  grid.dataset.catTotal = result.total || 0;
+  if (more) more.style.display = (result.total > result.rows.length) ? '' : 'none';
+}
 
-  // Start fetch
-  _catLoadingMedia = media;
-  _catCache[media] = [];  // mark as loading
-
-  const grid = $('categories-grid');
-  grid.innerHTML = '<div id="cat-spinner" style="grid-column:1/-1;padding:40px;text-align:center;color:#8892a8;font-size:13px">Loading\u2026</div>';
-  $('cat-show-more').style.display = 'none';
-
-  Papa.parse(csvDir + _catCsvFile[media], {
-    download: true,
-    header: true,
-    skipEmptyLines: true,
-    complete: function(results) {
-      _catCache[media] = results.data;
-      _catLoadingMedia = null;
-      // Only render if this is still the active media type
-      if (catMedia === media) _renderCatPage(true);
-    },
-    error: function() {
-      _catLoadingMedia = null;
-      _catCache[media] = null;  // allow retry
-      $('categories-grid').innerHTML = '<div style="grid-column:1/-1;padding:40px;text-align:center;color:#c0392b;font-size:13px">&#9888; Could not load data. Check your connection.</div>';
-    }
+function _appendCatCards(rows, grid) {
+  const frag = document.createDocumentFragment();
+  rows.forEach(m => {
+    const div = document.createElement('div');
+    div.className = 'movie-card';
+    div.onclick   = () => openMovieObj(m);
+    div.innerHTML = `<div class="poster-wrap">${m.poster_url
+      ? `<img src="${m.poster_url}" class="poster-img" loading="lazy" onerror="this.style.opacity=0.2">`
+      : '<div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;font-size:32px">&#127916;</div>'
+    }</div>
+    <div class="card-title">${safe(m.title || m.name || '')}</div>
+    <div class="card-meta"><span class="card-rating">&#9733;${parseFloat(m.vote_average||0).toFixed(1)}</span></div>`;
+    frag.appendChild(div);
   });
+  grid.appendChild(frag);
 }
 
 // ── Public interface ──────────────────────────────────────
@@ -1342,21 +1253,33 @@ function initCategories() { _loadAndRender(); }
 function setCategory(cat, el) {
   catCurrent = cat;
   document.querySelectorAll('.cat-tab').forEach(c => c.classList.remove('active'));
-  el.classList.add('active');
-  _catShown = 0;
-  _renderCatPage(true);   // cache already warm — instant
+  if (el) el.classList.add('active');
+  _loadAndRender();
 }
 
 function setCatMedia(media, el) {
   catMedia = media;
   document.querySelectorAll('.cat-media-toggle .toggle-btn').forEach(b => b.classList.remove('active'));
-  el.classList.add('active');
-  _catShown = 0;
-  _loadAndRender();       // fetch if not cached yet
+  if (el) el.classList.add('active');
+  _loadAndRender();
 }
 
-function catShowMore() {
-  _renderCatPage(false);
+async function catShowMore() {
+  const cat   = catCurrent;
+  const media = catMedia;
+  const grid  = $('categories-grid');
+  const more  = $('cat-show-more');
+  if (!grid) return;
+
+  const shown = parseInt(grid.dataset.catShown || '0');
+  const total = parseInt(grid.dataset.catTotal || '0');
+  if (total && shown >= total) { if (more) more.style.display = 'none'; return; }
+
+  const result = await _wLoadCat(cat, media, shown);
+  if (!result.rows || !result.rows.length) { if (more) more.style.display = 'none'; return; }
+  _appendCatCards(result.rows, grid);
+  grid.dataset.catShown = shown + result.rows.length;
+  if (more) more.style.display = (result.total && (shown + result.rows.length) >= result.total) ? 'none' : '';
 }
 
 function renderCategories() { _loadAndRender(); }
@@ -1369,12 +1292,10 @@ function renderCategories() { _loadAndRender(); }
 // ══════════════════════════════════════════════════════════
 let searchType = 'all', searchGenre = '', searchMinRating = 0;
 function initSearch() {
-ensureGenreFreq().then(() => {
 const chips = $('genre-chips');
 const genres = DATA.genreFreq.slice(0,12).map(g => g.genre);
 chips.innerHTML = `<div class="chip active" onclick="setSearchGenre('',this)">All Genres</div>` +
 genres.map(g => `<div class="chip" onclick="setSearchGenre('${g.replace(/'/g,"\\'")}',this)">${safe(g)}</div>`).join('');
-});
 doSearch();
 }
 
@@ -1399,78 +1320,81 @@ el.classList.add('active');
 doSearch();
 }
 
-function doSearch() {
-const q = ($('main-search')?.value || '').toLowerCase().trim();
+async function doSearch() {
+const q       = ($('main-search')?.value || '').toLowerCase().trim();
 const results = $('search-results');
+if (!results) return;
 
+// ── Actor search — via Worker ────────────────────────────────────────────
 if (searchType === 'actor') {
-if (!_phase2Done && !DATA.actors.length) {
-results.innerHTML = `<div style="padding:20px;color:var(--text2);font-size:12px">⏳ Actor library is still loading…</div>`;
-return;
-}
-const data = DATA.actors.filter(a => !q || a.name.toLowerCase().includes(q));
-results.innerHTML = data.slice(0,60).map(a => {
-const r = movieRegistry.push(a) - 1;
-return `<div class="movie-card" onclick="openActorObj(movieRegistry[${r}])">
-       <div class="poster-wrap">${a.profile_url?`<img src="${a.profile_url}" class="poster-img" loading="lazy" onerror="this.style.opacity=0.2">`:'<span style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);font-size:32px">👤</span>'}</div>
-       <div class="card-title">${safe(a.name)}</div>
-       <div class="card-meta">${safe(a.known_for_dept||'Actor')}</div>
-     </div>`;
-}).join('');
-return;
+  if (!_phase2Done) {
+    results.innerHTML = `<div style="padding:20px;color:var(--text2);font-size:12px">⏳ Actor library is still loading…</div>`;
+    return;
+  }
+  results.innerHTML = `<div style="padding:20px;color:var(--text2);font-size:12px">🔍 Searching…</div>`;
+  const actors = await _wSearchActors(q);
+  results.innerHTML = actors.slice(0,60).map(a => {
+    const r = getMovieIdx(a);
+    return `<div class="movie-card" onclick="openActorObj(movieRegistry[${r}])">
+      <div class="poster-wrap">${a.profile_url?`<img src="${a.profile_url}" class="poster-img" loading="lazy" onerror="this.style.opacity=0.2">`:'<span style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);font-size:32px">👤</span>'}</div>
+      <div class="card-title">${safe(a.name)}</div>
+      <div class="card-meta">${safe(a.known_for_dept||'Actor')}</div>
+    </div>`;
+  }).join('') || `<div style="padding:20px;color:var(--text2);font-size:12px">⏳ Actor library loading — try again shortly</div>`;
+  return;
 }
 
-// Build the search pool — prefer full library (phase 2); fall back to seed pool
-// Deduplicate by id+media_type across all sources
+// ── Seed results from already-loaded small CSVs (instant) ────────────────
 const seen = new Set();
-const addPool = (arr) => arr.forEach(m => {
-const k = String(m.id)+String(m.media_type);
-if (!seen.has(k)) { seen.add(k); pool.push(m); }
+const addDeduped = (arr, out) => arr.forEach(m => {
+  const k = String(m.id)+String(m.media_type);
+  if (!seen.has(k)) { seen.add(k); out.push(m); }
 });
-const pool = [];
-// Always include full library if loaded; otherwise use seed + dynamic CSVs
-addPool(DATA.moviesSeries);
-addPool(DATA.newReleases);
-addPool(DATA.topRated);
+const seedPool = [];
+addDeduped(DATA.newReleases, seedPool);
+addDeduped(DATA.topRated,    seedPool);
 
-const data = pool.filter(m => {
-if (searchType === 'movie' && m.media_type !== 'movie') return false;
-if (searchType === 'tv'    && m.media_type !== 'tv')    return false;
-if (searchGenre && !(m.genres||'').toLowerCase().includes(searchGenre.toLowerCase())) return false;
-if (searchMinRating && parseFloat(m.vote_average||0) < searchMinRating) return false;
-if (!q) return true;
-const title   = (m.title||'').toLowerCase();
-const origTit = (m.original_title||'').toLowerCase();
-const nameF   = (m.name||'').toLowerCase();
-return title.includes(q) || origTit.includes(q) || nameF.includes(q);
+const mType = searchType === 'all' ? '' : searchType;
+const seedFiltered = seedPool.filter(m => {
+  if (mType === 'movie' && m.media_type !== 'movie') return false;
+  if (mType === 'tv'    && m.media_type !== 'tv')    return false;
+  if (searchGenre && !(m.genres||'').toLowerCase().includes(searchGenre.toLowerCase())) return false;
+  if (searchMinRating && parseFloat(m.vote_average||0) < searchMinRating) return false;
+  if (!q) return true;
+  return (m.title||'').toLowerCase().includes(q) ||
+         (m.original_title||'').toLowerCase().includes(q) ||
+         (m.cast||'').toLowerCase().includes(q);
 });
 
-// Sort: exact title match first, then starts-with, then rest; then by rating desc
-const ranked = q ? data.sort((a,b) => {
-const ta = (a.title||a.name||'').toLowerCase();
-const tb = (b.title||b.name||'').toLowerCase();
-const ea = ta === q, eb = tb === q;
-if (ea !== eb) return ea ? -1 : 1;
-const sa = ta.startsWith(q), sb = tb.startsWith(q);
-if (sa !== sb) return sa ? -1 : 1;
-return parseFloat(b.vote_average||0) - parseFloat(a.vote_average||0);
-}) : data;
-
-const notLoaded = !_phase2Done && !q;
-const hint = notLoaded
-? `<div style="grid-column:1/-1;padding:8px 0 4px;font-size:11px;color:var(--gold)">⏳ Full library still loading — showing ${pool.length.toLocaleString()} titles so far</div>`
-: (q && ranked.length === 0 && !_phase2Done)
-? `<div style="grid-column:1/-1;padding:8px 0 4px;font-size:11px;color:var(--text2)">⏳ Full library still loading — search results may be incomplete</div>`
-: '';
-
-results.innerHTML = hint + ranked.slice(0,100).map(m => {
-const r = getMovieIdx(m);
-return `<div class="movie-card" onclick="openMovieObj(movieRegistry[${r}])">
-     <div class="poster-wrap">${m.poster_url?`<img src="${m.poster_url}" class="poster-img" loading="lazy" onerror="this.style.opacity=0.2">`:'<span style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);font-size:32px">🎬</span>'}</div>
-     <div class="card-title">${safe(m.title||m.name||'')}</div>
-     <div class="card-meta"><span class="card-rating">★${parseFloat(m.vote_average||0).toFixed(1)}</span> ${m.media_type==='tv'?'📺':'🎬'} ${(m.release_date||m.year||'').slice(0,4)}</div>
-   </div>`;
+const hint = !_phase2Done
+  ? `<div style="grid-column:1/-1;padding:8px 0 4px;font-size:11px;color:var(--gold)">⏳ Full library indexing — showing partial results</div>`
+  : '';
+results.innerHTML = hint + seedFiltered.slice(0,60).map(m => {
+  const r = getMovieIdx(m);
+  return `<div class="movie-card" onclick="openMovieObj(movieRegistry[${r}])">
+    <div class="poster-wrap">${m.poster_url?`<img src="${m.poster_url}" class="poster-img" loading="lazy" onerror="this.style.opacity=0.2">`:'<span style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);font-size:32px">🎬</span>'}</div>
+    <div class="card-title">${safe(m.title||m.name||'')}</div>
+    <div class="card-meta"><span class="card-rating">★${parseFloat(m.vote_average||0).toFixed(1)}</span> ${m.media_type==='tv'?'📺':'🎬'} ${(m.release_date||m.year||'').slice(0,4)}</div>
+  </div>`;
 }).join('');
+
+// ── Full results from Worker — enriches display (only ≤60 rows ever sent) ─
+if (_worker) {
+  const workerRes = await _wSearch(q, mType, searchGenre, searchMinRating);
+  if (workerRes.length) {
+    const merged = [...workerRes];
+    workerRes.forEach(m => { const k=String(m.id)+m.media_type; seen.add(k); });
+    seedFiltered.forEach(m => { const k=String(m.id)+m.media_type; if(!seen.has(k)){seen.add(k);merged.push(m);} });
+    results.innerHTML = merged.slice(0,60).map(m => {
+      const r = getMovieIdx(m);
+      return `<div class="movie-card" onclick="openMovieObj(movieRegistry[${r}])">
+        <div class="poster-wrap">${m.poster_url?`<img src="${m.poster_url}" class="poster-img" loading="lazy" onerror="this.style.opacity=0.2">`:'<span style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);font-size:32px">🎬</span>'}</div>
+        <div class="card-title">${safe(m.title||m.name||'')}</div>
+        <div class="card-meta"><span class="card-rating">★${parseFloat(m.vote_average||0).toFixed(1)}</span> ${m.media_type==='tv'?'📺':'🎬'} ${(m.release_date||m.year||'').slice(0,4)}</div>
+      </div>`;
+    }).join('');
+  }
+}
 }
 
 // ══════════════════════════════════════════════════════════
@@ -1479,20 +1403,12 @@ return `<div class="movie-card" onclick="openMovieObj(movieRegistry[${r}])">
 let actorsGridInited = false;
 
 function initActorsGrid(force) {
-if (!DATA.actors.length && !force) {
+if (!_phase2Done && !force) {
 $('actors-grid').innerHTML = `<div style="grid-column:1/-1;padding:20px;color:var(--text2);font-size:12px">⏳ Actor library loading…</div>`;
 return;
 }
-actorsGridInited = true;
-$('actors-grid').innerHTML = DATA.actors.slice(0,25).map(a => {
-const r = movieRegistry.push(a) - 1;
-return `<div class="actor-card" onclick="openActorObj(movieRegistry[${r}])">
-     ${a.profile_url?`<img src="${a.profile_url}" class="actor-card-img" loading="lazy" onerror="this.style.opacity=0.3">`:'<div class="actor-card-img" style="display:flex;align-items:center;justify-content:center;font-size:28px;background:var(--bg3)">👤</div>'}
-     <div class="actor-card-name">${safe(a.name)}</div>
-     <div class="actor-card-dept">${safe(a.known_for_dept||'Actor')}</div>
-   </div>`;
-}).join('');
-$('actor-page-content').innerHTML = '<div class="section-header"><div class="section-title">Actors & Stars</div></div>';
+// DATA.actors is always empty (actors live in worker). Trigger worker search.
+doSearch();
 }
 
 function openActorObj(a) {
@@ -1523,10 +1439,9 @@ nav('actor', null);
 if (!actorsGridInited) initActorsGrid();
 }
 
-async function openActorByName(name) {
-await ensureActors();
-const actor = DATA.actors.find(a => a.name === name);
-openActorObj(actor || { name, top_movies: '', biography: 'No data available.', known_for_dept: 'Actor' });
+function openActorByName(name) {
+// DATA.actors lives in worker; fall back to stub — full data loads via search
+openActorObj({ name, top_movies: '', biography: '', known_for_dept: 'Actor' });
 }
 
 function searchByTitle(title) {
@@ -1538,8 +1453,7 @@ doSearch();
 // ══════════════════════════════════════════════════════════
 // MOOD
 // ══════════════════════════════════════════════════════════
-async function selectMood(mood) {
-await ensureMoodData();
+function selectMood(mood) {
 const moodGenreMap = {
 sad:['Comedy','Animation','Family'],
 nervous:['Sport','Music','Documentary'],
@@ -1555,7 +1469,8 @@ happy:'💥 Action & Adventure Rides'
 const genres = moodGenreMap[mood] || [];
 let movies = DATA.moodData.filter(m => m.mood === mood);
 if (!movies.length) {
-movies = DATA.moviesSeries.filter(m => {
+// Fall back to seed pool (newReleases + topRated) — full library lives in worker
+movies = [...DATA.newReleases, ...DATA.topRated].filter(m => {
 if (m.media_type !== 'movie') return false;
 if (mood === 'tired' && parseFloat(m.vote_average||0) < 8) return false;
 return genres.some(g => (m.genres||'').includes(g));
@@ -1583,8 +1498,7 @@ $('mood-results').style.display = 'none';
 // ══════════════════════════════════════════════════════════
 let recQueue = [], recIdx = 0, genreLikes = {}, genreDislikes = {};
 
-async function initRec() {
-await ensureRecPool();
+function initRec() {
 recQueue = [...DATA.recPool].sort(() => Math.random()-0.5).slice(0,10);
 recIdx = 0; genreLikes = {}; genreDislikes = {};
 $('rec-final-results').style.display = 'none';
@@ -2179,218 +2093,204 @@ error: () => resolve([])
 // ── Phase tracking ────────────────────────────────────────────────────────────
 let _phase2Done = false;
 let _phase2Promise = null;
-// Per-feature lazy load promises (load once, cache result)
-const _lazyLoads = {};
 
 const csvDir = 'csv_output/';
-
-// ── Lazy loader: load a feature's data only the first time it's needed ─────────
-function lazyLoad(key, loader) {
-  if (!_lazyLoads[key]) _lazyLoads[key] = loader();
-  return _lazyLoads[key];
-}
-
-// ── On-demand detail fetch: reads a single row from detail_lookup.csv ─────────
-let _detailIndex = null; // loaded once, on first modal open
-
-async function getMovieDetail(id) {
-  // Load index on first call
-  if (!_detailIndex) {
-    try {
-      const r = await fetch(csvDir + 'detail_lookup_index.json');
-      _detailIndex = await r.json();
-    } catch(e) { _detailIndex = { rows: {} }; }
-  }
-  const entry = _detailIndex.rows[String(id)];
-  if (!entry) return null;
-  const [byteOffset, byteLen] = entry;
-  try {
-    const r = await fetch(csvDir + 'detail_lookup.csv', {
-      headers: { Range: `bytes=${byteOffset}-${byteOffset + byteLen - 1}` }
-    });
-    const text = await r.text();
-    // Parse the single CSV row using the header
-    const headerCols = _detailIndex.header.split(',');
-    const parsed = Papa.parse(text.trim(), { header: false, skipEmptyLines: true });
-    if (!parsed.data || !parsed.data[0]) return null;
-    const row = {};
-    headerCols.forEach((col, i) => { row[col.replace(/^\ufeff/, '')] = parsed.data[0][i] || ''; });
-    return row;
-  } catch(e) { return null; }
-}
-
-// Same for actors
-let _actorDetailIndex = null;
-
-async function getActorDetail(id) {
-  if (!_actorDetailIndex) {
-    try {
-      const r = await fetch(csvDir + 'detail_actors_index.json');
-      _actorDetailIndex = await r.json();
-    } catch(e) { _actorDetailIndex = { rows: {} }; }
-  }
-  const entry = _actorDetailIndex.rows[String(id)];
-  if (!entry) return null;
-  const [byteOffset, byteLen] = entry;
-  try {
-    const r = await fetch(csvDir + 'detail_actors.csv', {
-      headers: { Range: `bytes=${byteOffset}-${byteOffset + byteLen - 1}` }
-    });
-    const text = await r.text();
-    const headerCols = _actorDetailIndex.header.split(',');
-    const parsed = Papa.parse(text.trim(), { header: false, skipEmptyLines: true });
-    if (!parsed.data || !parsed.data[0]) return null;
-    const row = {};
-    headerCols.forEach((col, i) => { row[col.replace(/^\ufeff/, '')] = parsed.data[0][i] || ''; });
-    return row;
-  } catch(e) { return null; }
-}
 
 async function loadAllData() {
 showLoadingOverlay('Loading cinema data…');
 
-// ══ PHASE 1 — CRITICAL only: home page data + egypt cinemas (~1.5 MB total) ═══
+// ══ PHASE 1 — small, critical CSVs only (~5–10 MB) ════════════════════════
+// static_movies_series.csv is intentionally excluded — loaded async in Phase 2
 const [
-  newReleases, topRated, egyptRaw, egyptPivotRaw
+newReleases, topRated, reviews, awards, moviesByYear,
+moodData, recPool, cinemaGalaxy, cinemaWorld, egyptRaw,
+genreFreq, coocRaw, pointCloud, egyptPivotRaw
 ] = await Promise.all([
-  parseCSV(csvDir+'dynamic_new_releases.csv'),
-  parseCSV(csvDir+'dynamic_top_rated.csv'),
-  parseCSV(csvDir+'egypt_cinema_20260508_1117.csv'),
-  parseCSV(csvDir+'egypt_cinema_pivoted_days.csv')
+parseCSV(csvDir+'dynamic_new_releases.csv'),
+parseCSV(csvDir+'dynamic_top_rated.csv'),
+parseCSV(csvDir+'dynamic_reviews.csv'),
+parseCSV(csvDir+'static_awards.csv'),
+parseCSV(csvDir+'static_movies_by_year.csv'),
+parseCSV(csvDir+'recommendation_mood.csv'),
+parseCSV(csvDir+'recommendation_pool.csv'),
+parseCSV(csvDir+'static_cinema_galaxy.csv'),
+parseCSV(csvDir+'static_cinema_world.csv'),
+parseCSV(csvDir+'egypt_cinema_20260508_1117.csv'),
+parseCSV(csvDir+'analytics_genre_frequency.csv'),
+parseCSV(csvDir+'analytics_genre_cooccurrence.csv'),
+parseCSV(csvDir+'analytics_point_cloud.csv'),
+parseCSV(csvDir+'egypt_cinema_pivoted_days.csv')
 ]);
 
-Object.assign(DATA, { newReleases, topRated });
+// actors, moviesByYear deferred too — load after UI is visible
+Object.assign(DATA, { newReleases, topRated, reviews, awards, moviesByYear,
+moodData, recPool, cinemaGalaxy, cinemaWorld, genreFreq, pointCloud });
 
-// Seed moviesSeries with just new releases + top rated (~600 items) for immediate home/search
+// Use newReleases + topRated as the initial moviesSeries stand-in so
+// Home, Top Rated, Categories all work immediately with 0 delay
+const seedPool = [...newReleases, ...topRated, ...recPool];
 const seedSeen = new Set();
-DATA.moviesSeries = [...newReleases, ...topRated].filter(m => {
-  const k = String(m.id)+m.media_type;
-  if (seedSeen.has(k)) return false;
-  seedSeen.add(k); return true;
+DATA.moviesSeries = seedPool.filter(m => {
+const k = String(m.id)+m.media_type;
+if (seedSeen.has(k)) return false;
+seedSeen.add(k); return true;
 });
 
-// ── Build Egypt cinema data ────────────────────────────────────────────────────
+// ── Step 1: Build days map from pivoted CSV (Title → { dayLabel → Set of cinemas }) ──
+// Columns: Title | Cinema Name | Friday 08 | Saturday 09 | Sunday 10 | Monday 11 | Tuesday 12
 const DAY_ORDER = ['friday','saturday','sunday','monday','tuesday','wednesday','thursday'];
-const pivotDaysMap = {};
+const pivotDaysMap = {}; // { title: { dayLabel: Set<cinemaName> } }
 
 if (egyptPivotRaw.length) {
-  const pivotKeys = Object.keys(egyptPivotRaw[0]);
-  const dayCols = pivotKeys
-    .filter(k => !['title','cinema name'].includes(k.toLowerCase().trim()))
-    .sort((a, b) => {
-      const ia = DAY_ORDER.findIndex(d => a.toLowerCase().startsWith(d));
-      const ib = DAY_ORDER.findIndex(d => b.toLowerCase().startsWith(d));
-      return (ia === -1 ? 99 : ia) - (ib === -1 ? 99 : ib);
-    });
-  egyptPivotRaw.forEach(row => {
-    const titleKey  = pivotKeys.find(k => k.toLowerCase().trim() === 'title');
-    const cinemaKey = pivotKeys.find(k => k.toLowerCase().trim() === 'cinema name');
-    const title  = (row[titleKey]  || '').trim();
-    const cinema = (row[cinemaKey] || '').trim();
-    if (!title || !cinema) return;
-    if (!pivotDaysMap[title]) pivotDaysMap[title] = {};
-    dayCols.forEach(col => {
-      if ((row[col] || '').trim()) {
-        if (!pivotDaysMap[title][col]) pivotDaysMap[title][col] = new Set();
-        pivotDaysMap[title][col].add(cinema);
-      }
-    });
-  });
+const pivotKeys = Object.keys(egyptPivotRaw[0]);
+// Day columns = everything except Title and Cinema Name
+const dayCols = pivotKeys
+.filter(k => !['title','cinema name'].includes(k.toLowerCase().trim()))
+.sort((a, b) => {
+const ia = DAY_ORDER.findIndex(d => a.toLowerCase().startsWith(d));
+const ib = DAY_ORDER.findIndex(d => b.toLowerCase().startsWith(d));
+return (ia === -1 ? 99 : ia) - (ib === -1 ? 99 : ib);
+});
+
+egyptPivotRaw.forEach(row => {
+const titleKey = pivotKeys.find(k => k.toLowerCase().trim() === 'title');
+const cinemaKey = pivotKeys.find(k => k.toLowerCase().trim() === 'cinema name');
+const title  = (row[titleKey]  || '').trim();
+const cinema = (row[cinemaKey] || '').trim();
+if (!title || !cinema) return;
+if (!pivotDaysMap[title]) pivotDaysMap[title] = {};
+dayCols.forEach(col => {
+if ((row[col] || '').trim()) {          // non-empty = this cinema shows on this day
+if (!pivotDaysMap[title][col]) pivotDaysMap[title][col] = new Set();
+pivotDaysMap[title][col].add(cinema);
+}
+});
+});
 }
 
+// ── Step 2: Build egyptMap from old CSV (Title, Description, Poster, Cinema, Showtime) ──
+// Days come exclusively from the pivoted CSV above.
 const egyptMap = {};
 function getCol(row, ...candidates) {
-  const keys = Object.keys(row);
-  for (const cand of candidates) {
-    if (row[cand] !== undefined) return (row[cand] || '').trim();
-    const found = keys.find(k => k.toLowerCase() === cand.toLowerCase());
-    if (found && row[found] !== undefined) return (row[found] || '').trim();
-    const partial = keys.find(k => k.toLowerCase().includes(cand.toLowerCase()));
-    if (partial && row[partial] !== undefined) return (row[partial] || '').trim();
-  }
-  return '';
+const keys = Object.keys(row);
+for (const cand of candidates) {
+if (row[cand] !== undefined) return (row[cand] || '').trim();
+const found = keys.find(k => k.toLowerCase() === cand.toLowerCase());
+if (found && row[found] !== undefined) return (row[found] || '').trim();
+const partial = keys.find(k => k.toLowerCase().includes(cand.toLowerCase()));
+if (partial && row[partial] !== undefined) return (row[partial] || '').trim();
 }
+return '';
+}
+
 egyptRaw.forEach(row => {
-  const title  = getCol(row, 'Title', 'title', 'Movie', 'movie');
-  const cinema = getCol(row, 'Cinema Name', 'Cinema', 'cinema', 'cinema_name', 'Theater', 'theatre', 'Venue');
-  const time   = getCol(row, 'Showtime', 'Time', 'time', 'showtime', 'show_time', 'ShowTime', 'Start');
-  if (!title || !cinema) return;
-  if (!egyptMap[title]) egyptMap[title] = {
-    title,
-    description:  getCol(row, 'Description', 'description', 'Overview', 'overview', 'Plot', 'plot'),
-    poster_url:   getCol(row, 'Poster URL', 'poster_url', 'Poster', 'poster', 'Image', 'image'),
-    backdrop_url: getCol(row, 'Backdrop URL', 'backdrop_url', 'Backdrop', 'backdrop', 'backdrop_path', 'Fanart', 'fanart'),
-    days: {}
-  };
-  const titleDays = pivotDaysMap[title] || {};
-  Object.entries(titleDays).forEach(([dayLabel, cinemaSet]) => {
-    if (!cinemaSet.has(cinema)) return;
-    if (!egyptMap[title].days[dayLabel]) egyptMap[title].days[dayLabel] = {};
-    if (!egyptMap[title].days[dayLabel][cinema]) egyptMap[title].days[dayLabel][cinema] = [];
-    if (time && !egyptMap[title].days[dayLabel][cinema].includes(time))
-      egyptMap[title].days[dayLabel][cinema].push(time);
-  });
+const title  = getCol(row, 'Title', 'title', 'Movie', 'movie');
+const cinema = getCol(row, 'Cinema Name', 'Cinema', 'cinema', 'cinema_name', 'Theater', 'theatre', 'Venue');
+const time   = getCol(row, 'Showtime', 'Time', 'time', 'showtime', 'show_time', 'ShowTime', 'Start');
+if (!title || !cinema) return;
+
+if (!egyptMap[title]) egyptMap[title] = {
+title,
+description: getCol(row, 'Description', 'description', 'Overview', 'overview', 'Plot', 'plot'),
+poster_url:  getCol(row, 'Poster URL', 'poster_url', 'Poster', 'poster', 'Image', 'image'),
+backdrop_url: getCol(row, 'Backdrop URL', 'backdrop_url', 'Backdrop', 'backdrop', 'backdrop_path', 'Fanart', 'fanart'),
+days: {}
+};
+
+// ── Days: read ONLY from pivotDaysMap ──
+const titleDays = pivotDaysMap[title] || {};
+Object.entries(titleDays).forEach(([dayLabel, cinemaSet]) => {
+if (!cinemaSet.has(cinema)) return;           // this cinema not listed for this day
+if (!egyptMap[title].days[dayLabel]) egyptMap[title].days[dayLabel] = {};
+if (!egyptMap[title].days[dayLabel][cinema])  egyptMap[title].days[dayLabel][cinema] = [];
+if (time && !egyptMap[title].days[dayLabel][cinema].includes(time))
+egyptMap[title].days[dayLabel][cinema].push(time);
 });
+});
+
 DATA.egyptCinemas = Object.values(egyptMap);
+
+// Parse co-occurrence matrix
+if (coocRaw.length) {
+const cols = Object.keys(coocRaw[0]).filter(c => c !== 'Unnamed: 0');
+DATA.coocGenres = cols;
+DATA.coocMatrix = coocRaw.map(row => cols.map(c => parseInt(row[c])||0));
+}
 
 hideLoadingOverlay();
 initAll();
 
-// ══ PHASE 2 — slim full index (3 MB) loaded in background ═══════════════════
-_phase2Promise = (async () => {
-  try {
-    updateLoadingBadge('Loading full library…');
-    const moviesSeries = await parseCSV(csvDir+'slim_index.csv');
-    DATA.moviesSeries = moviesSeries;
-    _phase2Done = true;
-    buildSearchIndex();
-    updateLoadingBadge(null);
-    if (currentPage === 'search')     doSearch();
-    if (currentPage === 'top-rated')  renderTopRated();
-    if (currentPage === 'year')       renderYear();
-    if (currentPage === 'categories') renderCategories();
-  } catch(e) { updateLoadingBadge(null); }
-})();
+// ══ PHASE 2 — heavy CSVs live in the Worker; never loaded in main thread ═════
+// static_movies_series.csv (25k rows) and static_actors.csv are streamed
+// and searched entirely off the main thread.  Only ≤60 result rows ever
+// reach here, keeping JS heap ≤ 10 MB.
+_phase2Done = false;
+_workerReady = false;
+_startSearchWorker(csvDir);
 }
 
-// ── Per-page lazy loaders ─────────────────────────────────────────────────────
-function ensureReviews()    { return lazyLoad('reviews',    () => parseCSV(csvDir+'dynamic_reviews.csv').then(d => { DATA.reviews = d; })); }
-function ensureAwards()     { return lazyLoad('awards',     () => parseCSV(csvDir+'static_awards.csv').then(d => { DATA.awards = d; })); }
-function ensureMoviesByYear(){ return lazyLoad('moviesByYear', () => parseCSV(csvDir+'static_movies_by_year.csv').then(d => { DATA.moviesByYear = d; })); }
-function ensureMoodData()   { return lazyLoad('mood',       () => parseCSV(csvDir+'recommendation_mood_slim.csv').then(d => { DATA.moodData = d; })); }
-function ensureRecPool()    { return lazyLoad('recPool',    () => parseCSV(csvDir+'recommendation_pool_slim.csv').then(d => { DATA.recPool = d; })); }
-function ensureCinemaWorld(){ return lazyLoad('cinemaWorld',() => parseCSV(csvDir+'static_cinema_world.csv').then(d => { DATA.cinemaWorld = d; })); }
-function ensureCinemaGalaxy(){ return lazyLoad('cinemaGalaxy', () => parseCSV(csvDir+'static_cinema_galaxy.csv').then(d => { DATA.cinemaGalaxy = d; })); }
-function ensureActors()     { return lazyLoad('actors',     () => parseCSV(csvDir+'slim_actors.csv').then(d => { DATA.actors = d; })); }
-function ensureGenreFreq()  { return lazyLoad('genreFreq',  () => parseCSV(csvDir+'analytics_genre_frequency.csv').then(d => { DATA.genreFreq = d; })); }
-function ensurePointCloud() { return lazyLoad('pointCloud', () => parseCSV(csvDir+'analytics_point_cloud_slim.csv').then(d => { DATA.pointCloud = d; })); }
-function ensureCooc()       {
-  return lazyLoad('cooc', () =>
-    parseCSV(csvDir+'analytics_genre_cooccurrence.csv').then(coocRaw => {
-      if (coocRaw.length) {
-        const cols = Object.keys(coocRaw[0]).filter(c => c !== 'Unnamed: 0');
-        DATA.coocGenres = cols;
-        DATA.coocMatrix = coocRaw.map(row => cols.map(c => parseInt(row[c])||0));
-      }
-    })
-  );
+// ── Worker bootstrap — streams heavy CSVs off-thread ─────────────────────────
+// buildSearchIndex() is intentionally removed; the Worker indexes 25k rows
+// in its own thread and never sends them to the main thread — only ≤60 results.
+
+let _worker       = null;
+let _workerReady  = false;
+let _workerReqId  = 0;
+const _workerPending = {};
+
+function _startSearchWorker(base) {
+  try { _worker = new Worker('search-worker.js'); }
+  catch(e) { console.warn('[CineMatrix] Worker unavailable:', e); return; }
+
+  _worker.onmessage = function(e) {
+    const { type, requestId } = e.data;
+    if (requestId && _workerPending[requestId]) {
+      _workerPending[requestId](e.data);
+      delete _workerPending[requestId];
+      return;
+    }
+    if (type === 'MOVIES_READY') {
+      _workerReady = true; _phase2Done = true;
+      updateLoadingBadge(null);
+      if (currentPage === 'search')    doSearch();
+      if (currentPage === 'top-rated') typeof renderTopRated === 'function' && renderTopRated();
+      if (currentPage === 'year')      typeof renderYear     === 'function' && renderYear();
+    }
+    if (type === 'ACTORS_READY') {
+      updateLoadingBadge(null);
+      if (currentPage === 'actor') initActorsGrid(true);
+    }
+  };
+  _worker.onerror = e => console.warn('[CineMatrix] Worker error', e);
+
+  updateLoadingBadge('Indexing library…');
+  _worker.postMessage({ type: 'LOAD_MOVIES', data: { url: base + 'static_movies_series.csv' } });
+  _worker.postMessage({ type: 'LOAD_ACTORS', data: { url: base + 'static_actors.csv' } });
 }
 
-// ── Thin search index built once phase 2 slim_index is done ──────────────────
-let _searchIndex = null;
-function buildSearchIndex() {
-_searchIndex = new Map();
-for (const m of DATA.moviesSeries) {
-const tokens = new Set([
-(m.title||'').toLowerCase(),
-(m.original_title||'').toLowerCase(),
-(m.name||'').toLowerCase()
-].filter(Boolean));
-for (const tok of tokens) {
-if (!_searchIndex.has(tok)) _searchIndex.set(tok, []);
-_searchIndex.get(tok).push(m);
+function _workerSend(msg) {
+  if (!_worker) return Promise.resolve(null);
+  return new Promise(resolve => {
+    const id = ++_workerReqId;
+    msg.data = Object.assign({}, msg.data, { requestId: id });
+    _workerPending[id] = resolve;
+    _worker.postMessage(msg);
+    setTimeout(() => { if (_workerPending[id]) { delete _workerPending[id]; resolve(null); } }, 15000);
+  });
 }
+
+function _wSearch(q, mediaType, genre, minRating) {
+  return _workerSend({ type: 'SEARCH', data: { query: q, mediaType, genre, minRating, limit: 60, baseUrl: csvDir } })
+    .then(r => (r && r.results) ? r.results : []);
 }
+function _wSearchActors(q) {
+  return _workerSend({ type: 'SEARCH_ACTORS', data: { query: q } })
+    .then(r => (r && r.results) ? r.results : []);
+}
+function _wLoadCat(cat, media, offset) {
+  const url = csvDir + (media === 'tv' ? 'mega_series.csv' : 'mega_movies.csv');
+  return _workerSend({ type: offset > 0 ? 'CAT_MORE' : 'LOAD_CAT', data: { cat, media, offset, limit: 30, url } })
+    .then(r => r || { rows: [], total: 0 });
 }
 
 // Small badge shown in top-right area while phase 2 loads
@@ -2442,31 +2342,14 @@ function _initPage(page) {
     case 'egypt':         initEgypt();       break;
     case 'egypt-cinemas': initCinemasPage(); break;
     case 'top-rated':     initTopRated();    break;
-    case 'awards':
-      ensureAwards().then(() => initAwards());
-      break;
-    case 'year':
-      ensureMoviesByYear().then(() => initYear());
-      break;
+    case 'awards':        initAwards();      break;
+    case 'year':          initYear();        break;
     case 'search':        initSearch();      break;
-    case 'mood':
-      ensureMoodData();  // pre-fetch but don't block render
-      break;
-    case 'recommend':
-      ensureRecPool().then(() => initRec());
-      break;
-    case 'worldmap':
-      ensureCinemaWorld().then(() => initWorldMap());
-      break;
-    case 'analytics':
-      ensureGenreFreq();
-      ensureCooc();
-      ensurePointCloud();
-      break;
-    case 'actor':
-      ensureActors().then(() => initActorsGrid(true));
-      break;
+    case 'mood':          /* no init */      break;
+    case 'recommend':     initRec();         break;
+    case 'worldmap':      initWorldMap();    break;
     case 'categories':
+      // Streaming: no phase 2 dependency — starts its own fetch on demand
       initCategories();
       break;
   }
@@ -2514,19 +2397,13 @@ const WM_NAMES = {
 100:"Bulgaria",492:"Monaco",600:"Paraguay",642:"Romania",620:"Portugal"
 };
 
-async function initWorldMap() {
+function initWorldMap() {
 if (wmInited) return;
 wmInited = true;
 
 const mapEl = document.getElementById('wm-map');
 if (!mapEl) return;
 mapEl.innerHTML = '<div style="padding:60px;text-align:center;color:#505878;font-size:13px;">Loading map…</div>';
-
-// Lazy-load D3 + TopoJSON only when worldmap is first opened
-await loadScripts(
-  'https://cdnjs.cloudflare.com/ajax/libs/d3/7.8.5/d3.min.js',
-  'https://cdnjs.cloudflare.com/ajax/libs/topojson/3.0.2/topojson.min.js'
-);
 
 const W = 900, H = 460;
 
