@@ -303,9 +303,30 @@ async function loadAnalyticsData() {
     const gEl = document.getElementById('ov-genres');
     if (gEl) gEl.textContent = genreSet.size;
 
-    // Category distribution for donut
-    const cats = {};
-    mainRows.forEach(m => { const c = m.category||'other'; cats[c] = (cats[c]||0)+1; });
+    // Category distribution for donut — map by original_language (same logic as frontend)
+    const cats = { Korean: 0, Anime: 0, Egyptian: 0, 'Middle East': 0, Global: 0, Musical: 0 };
+    mainRows.forEach(m => {
+      const lang    = (m.original_language || '').toLowerCase();
+      const cat     = (m.category || '').toLowerCase();
+      const genres  = (m.genres || '').toLowerCase();
+      if (lang === 'ko' || cat === 'ko' || cat.includes('topup_lang_ko')) {
+        cats['Korean']++;
+      } else if ((lang === 'ja' || cat === 'ja') && (genres.includes('animation'))) {
+        cats['Anime']++;
+      } else if (genres.includes('music') || genres.includes('musical') || cat.includes('10402')) {
+        cats['Musical']++;
+      } else if (lang === 'ar' || lang === 'fa' || lang === 'tr' || lang === 'he'
+              || cat.includes('arab_tv_') || cat.includes('topup_lang_ar')) {
+        cats['Middle East']++;
+      } else if (lang === 'en' || lang === 'fr' || lang === 'es' || lang === 'de'
+              || lang === 'hi' || lang === 'pt' || lang === 'it' || lang === 'ru'
+              || lang === 'zh' || cat === 'acclaimed' || cat.startsWith('/movie/')
+              || cat.startsWith('/trending/')) {
+        cats['Global']++;
+      } else {
+        cats['Global']++; // fallback
+      }
+    });
     _ovCats = cats;
 
     // Rating bins
@@ -336,7 +357,7 @@ async function loadAnalyticsData() {
 }
 
 // Shared slots for computed overview data
-let _ovCats = { korean: 0, anime: 0, global: 0, egyptian: 0, middle_east: 0, musical: 0 };
+let _ovCats = { Korean: 0, Anime: 0, Egyptian: 0, 'Middle East': 0, Global: 0, Musical: 0 };
 let _ovBins  = [0,0,0,0,0,0,0,0,0,0,0];
 
 
