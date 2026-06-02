@@ -1233,8 +1233,16 @@ async function _loadAndRender() {
   if (!grid) return;
 
   const myId = ++_catLoadId;
-  grid.innerHTML = '<div style="grid-column:1/-1;padding:40px;text-align:center;color:#8892a8;font-size:13px">Loading\u2026</div>';
   if (more) more.style.display = 'none';
+
+  // If worker isn't ready yet, show a waiting message and bail.
+  // MOVIES_READY will call _loadAndRender() again once indexing is done.
+  if (!_workerReady) {
+    grid.innerHTML = '<div style="grid-column:1/-1;padding:40px;text-align:center;color:#8892a8;font-size:13px">⏳ Building search index, please wait…</div>';
+    return;
+  }
+
+  grid.innerHTML = '<div style="grid-column:1/-1;padding:40px;text-align:center;color:#8892a8;font-size:13px">Loading…</div>';
 
   const result = await _wLoadCat(cat, media, 0);
   if (myId !== _catLoadId) return; // stale
@@ -2280,10 +2288,6 @@ function _startSearchWorker(base) {
       if (currentPage === 'top-rated')  typeof renderTopRated === 'function' && renderTopRated();
       if (currentPage === 'year')       typeof renderYear     === 'function' && renderYear();
       if (currentPage === 'categories') _loadAndRender();
-      // Pre-warm category CSVs in the worker so first tab visit is instant
-      const _b = csvDir || 'csv_output/';
-      _worker.postMessage({ type: 'LOAD_CAT', data: { cat:'korean', media:'movie', offset:0, limit:1, url:_b+'mega_movies.csv',  requestId:-1 } });
-      _worker.postMessage({ type: 'LOAD_CAT', data: { cat:'korean', media:'tv',    offset:0, limit:1, url:_b+'mega_series.csv', requestId:-2 } });
     }
     if (type === 'ACTORS_READY') {
       updateLoadingBadge(null);
