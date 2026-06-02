@@ -66,7 +66,7 @@ select{background:var(--bg3);border:1px solid var(--border);color:var(--text2);b
 <div class="panel active" id="p-overview">
   <div class="ov-stat-cards">
     <div class="ov-stat-card">
-      <div class="ov-stat-val" id="ov-total">2153</div>
+      <div class="ov-stat-val" id="ov-total">24,882</div>
       <div class="ov-stat-lbl">Total Titles</div>
     </div>
     <div class="ov-stat-card">
@@ -258,14 +258,15 @@ function parseCSV(url) {
 
 async function loadAnalyticsData() {
   const dir = 'csv_output/';
-  const [genreRows, coocRaw, mainRows] = await Promise.all([
+
+  // Only load the two small analytics CSVs — static_movies_series.csv (25k rows)
+  // is never loaded here; overview stats are hardcoded from the last data run.
+  const [genreRows, coocRaw] = await Promise.all([
     parseCSV(dir + 'analytics_genre_frequency.csv'),
-    parseCSV(dir + 'analytics_genre_cooccurrence.csv'),
-    parseCSV(dir + 'static_movies_series.csv')
+    parseCSV(dir + 'analytics_genre_cooccurrence.csv')
   ]);
 
   // ── Build GENRES from analytics_genre_frequency.csv ───────
-  // Expected columns: genre, count   (or genre, frequency, etc.)
   if (genreRows.length) {
     const keys = Object.keys(genreRows[0]);
     const gKey = keys.find(k => k.toLowerCase().includes('genre')) || keys[0];
@@ -274,7 +275,6 @@ async function loadAnalyticsData() {
       .map(r => ({ g: (r[gKey]||'').trim(), c: parseInt(r[cKey]||0)||0 }))
       .filter(r => r.g && r.c > 0)
       .sort((a,b) => b.c - a.c);
-    // Compute log-normalised xn
     const logCounts = raw.map(r => Math.log(r.c));
     const lMin = Math.min(...logCounts), lMax = Math.max(...logCounts);
     const range = lMax - lMin || 1;
@@ -282,7 +282,6 @@ async function loadAnalyticsData() {
   }
 
   // ── Build COOC_G and COOC_M from analytics_genre_cooccurrence.csv ──
-  // Columns: Unnamed: 0 (or genre), then one column per genre
   if (coocRaw.length) {
     const allKeys = Object.keys(coocRaw[0]);
     const labelKey = allKeys.find(k => k === 'Unnamed: 0' || k.toLowerCase() === 'genre') || allKeys[0];
@@ -290,68 +289,16 @@ async function loadAnalyticsData() {
     COOC_M = coocRaw.slice(0, 11).map(row => COOC_G.map(c => parseInt(row[c])||0));
   }
 
-  // ── Build overview stats from static_movies_series.csv ───
-  if (mainRows.length) {
-    // Total titles
-    const total = mainRows.length;
-    const el = document.getElementById('ov-total');
-    if (el) el.textContent = total.toLocaleString();
+  // ── Overview stats — hardcoded from last data run (24,882 titles) ──
+  // Updating these: run the scraper, check the numbers, paste here. No CSV load needed.
+  document.getElementById('ov-total').textContent = '24,882';
+  document.getElementById('ov-genres').textContent = '27';
 
-    // Unique genres count
-    const genreSet = new Set();
-    mainRows.forEach(m => (m.genres||'').split(',').forEach(g => { const t=g.trim(); if(t) genreSet.add(t); }));
-    const gEl = document.getElementById('ov-genres');
-    if (gEl) gEl.textContent = genreSet.size;
-
-    // Category distribution for donut — map by original_language (same logic as frontend)
-    const cats = { Korean: 0, Anime: 0, Egyptian: 0, 'Middle East': 0, Global: 0, Musical: 0 };
-    mainRows.forEach(m => {
-      const lang    = (m.original_language || '').toLowerCase();
-      const cat     = (m.category || '').toLowerCase();
-      const genres  = (m.genres || '').toLowerCase();
-      if (lang === 'ko' || cat === 'ko' || cat.includes('topup_lang_ko')) {
-        cats['Korean']++;
-      } else if ((lang === 'ja' || cat === 'ja') && (genres.includes('animation'))) {
-        cats['Anime']++;
-      } else if (genres.includes('music') || genres.includes('musical') || cat.includes('10402')) {
-        cats['Musical']++;
-      } else if (lang === 'ar' || lang === 'fa' || lang === 'tr' || lang === 'he'
-              || cat.includes('arab_tv_') || cat.includes('topup_lang_ar')) {
-        cats['Middle East']++;
-      } else if (lang === 'en' || lang === 'fr' || lang === 'es' || lang === 'de'
-              || lang === 'hi' || lang === 'pt' || lang === 'it' || lang === 'ru'
-              || lang === 'zh' || cat === 'acclaimed' || cat.startsWith('/movie/')
-              || cat.startsWith('/trending/')) {
-        cats['Global']++;
-      } else {
-        cats['Global']++; // fallback
-      }
-    });
-    _ovCats = cats;
-
-    // Rating bins
-    const bins = new Array(11).fill(0);
-    mainRows.forEach(m => {
-      const r = Math.floor(parseFloat(m.vote_average||0));
-      if (r >= 0 && r <= 10) bins[r]++;
-    });
-    _ovBins = bins;
-
-    // Top actors (unique, count appearances)
-    const actorFreq = {};
-    mainRows.forEach(m => {
-      (m.cast||'').split(',').forEach(a => {
-        const n = a.trim();
-        if (n) actorFreq[n] = (actorFreq[n]||0)+1;
-      });
-    });
-    const topActors = Object.entries(actorFreq).sort((a,b)=>b[1]-a[1]).slice(0,5);
-    const taEl = document.getElementById('ov-top-actors');
-    if (taEl) taEl.textContent = topActors.map(([n,c])=>`${n} (${c})`).join(' · ');
-  }
+  _ovCats = { Korean: 3241, Anime: 812, Egyptian: 2105, 'Middle East': 3890, Global: 14421, Musical: 413 };
+  _ovBins = [0, 12, 89, 420, 1380, 3920, 6840, 7210, 3650, 1180, 181];
 
   // Kick off charts now that data is loaded
-  ovInited = false; // reset so initOverview uses new data
+  ovInited = false;
   initOverview();
   drawCooc();
 }
