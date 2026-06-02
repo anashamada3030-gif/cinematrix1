@@ -872,17 +872,18 @@ function nav(page, el) {
   currentPage = page;
   $('main').scrollTop = 0;
 
-  // Lazy initializers for heavy pages
+  // On-demand init — runs once per page on first visit
+  _initPage(page);
+
+  // Special cases that always need to run (not just once)
   if (page === 'actor' && !actorsGridInited) initActorsGrid();
   if (page === 'news') renderNews();
-  if (page === 'recommend') initRec();
-  if (page === 'year') initYear();
-  if (page === 'analytics') { const f=$('analytics-iframe'); if(!f.src||f.src==='about:blank') f.src='cinamatrix_analytics_v2.html'; }
 
-  // Galaxy & TimeMachine are iframes — no JS init needed here.
-  // The iframes load their own standalone HTML files:
-  //   cinema_galaxy.html   → full Three.js orbital system
-  //   timemachine__1_.html → 3D tunnel time machine
+  // Analytics iframe — load lazily only when first opened
+  if (page === 'analytics') {
+    const f = $('analytics-iframe');
+    if (!f.src || f.src === 'about:blank') f.src = 'cinamatrix_analytics_v2.html';
+  }
 }
 
 // ══════════════════════════════════════════════════════════
@@ -2173,11 +2174,16 @@ async function loadAllData() {
       _phase2Done = true;
       buildSearchIndex();
       updateLoadingBadge(null);
-      // Refresh any page that's currently open and uses the full library
-      if (currentPage === 'search')      doSearch();
-      if (currentPage === 'categories')  renderCategoryGrid();
-      if (currentPage === 'year')        renderYear();
-      if (currentPage === 'actor')       initActorsGrid(true);
+      // Re-render any page that was opened before phase 2 finished
+      if (currentPage === 'search')     doSearch();
+      if (currentPage === 'categories') { _inited['categories'] = false; _initPage('categories'); }
+      if (currentPage === 'top-rated')  renderTopRated();
+      if (currentPage === 'year')       renderYear();
+      if (currentPage === 'actor')      initActorsGrid(true);
+      // Also unblock categories if it was visited and showed the spinner
+      if (_inited['categories'] === true && !$('categories-grid').children.length) {
+        _inited['categories'] = false; _initPage('categories');
+      }
     } catch(e) {
       updateLoadingBadge(null);
     }
@@ -2232,15 +2238,41 @@ function hideLoadingOverlay() {
   document.getElementById('loading-overlay')?.remove();
 }
 
+// Track which pages have been initialised so we never double-init
+const _inited = {};
+
 function initAll() {
-  initHome();
-  initSearch();
-  initEgypt();
-  initCinemasPage();
-  initTopRated();
-  initAwards();
-  initYear();
-  initCategories();
+  // Only initialise what's visible on load: home page + Egypt data (small CSVs)
+  _initPage('home');
+  _initPage('egypt');
+  _initPage('egypt-cinemas');
+}
+
+// Called by nav() before showing a page — deferred init
+function _initPage(page) {
+  if (_inited[page]) return;
+  _inited[page] = true;
+  switch (page) {
+    case 'home':          initHome();        break;
+    case 'egypt':         initEgypt();       break;
+    case 'egypt-cinemas': initCinemasPage(); break;
+    case 'top-rated':     initTopRated();    break;
+    case 'awards':        initAwards();      break;
+    case 'year':          initYear();        break;
+    case 'search':        initSearch();      break;
+    case 'mood':          /* no init */      break;
+    case 'recommend':     initRec();         break;
+    case 'worldmap':      initWorldMap();    break;
+    case 'categories':
+      // Needs phase 2 full library. If not ready yet, show spinner;
+      // phase 2 completion will call renderCategories() when done.
+      if (_phase2Done) { renderCategories(); }
+      else {
+        $('categories-grid').innerHTML =
+          '<div style="grid-column:1/-1;padding:40px;text-align:center;color:var(--text2);font-size:12px">⏳ Loading full library — please wait a moment…</div>';
+      }
+      break;
+  }
 }
 
 // ══════════════════════════════════════════════════════════
