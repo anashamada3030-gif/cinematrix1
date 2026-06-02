@@ -1188,102 +1188,119 @@ content.innerHTML = `<div style="display:grid;grid-template-columns:repeat(auto-
 // ══════════════════════════════════════════════════════════
 // CATEGORIES - streaming on-demand (no full CSV preload)
 // ══════════════════════════════════════════════════════════
+// CATEGORIES - progressive streaming, paginated display
+// ══════════════════════════════════════════════════════════
 let catCurrent = 'korean', catMedia = 'movie';
 const CAT_PER_PAGE = 30;
 
-// per-session stream state
-let _catParser   = null;   // active PapaParse handle
-let _catBuf      = [];     // matched rows collected
-let _catRendered = 0;      // how many are in the DOM
-let _catDone     = false;  // stream exhausted
-let _catLoading  = false;  // fetch in-flight
-let _catTarget   = CAT_PER_PAGE;  // pause when buf reaches this
+let _catBuf      = [];     // ALL matched rows collected so far
+let _catShown    = 0;      // how many cards are in the DOM
+let _catDone     = false;  // stream finished
+let _catStreamId = 0;      // session ID — lets us abort stale streams
 
 function _matchCat(m, uiCat) {
   const lang   = (m.original_language || '').toLowerCase().trim();
   const cat    = (m.category  || '').toLowerCase();
   const genres = (m.genres    || '').toLowerCase();
   switch (uiCat) {
-    case 'korean':      return lang === 'ko' || cat.includes('topup_lang_ko') || cat.includes('ko_');
-    case 'anime':       return (lang === 'ja' && (genres.includes('animation') || cat.includes('anime') || cat.includes('topup_lang_ja'))) || cat.includes('anime');
-    case 'egyptian':    return lang === 'ar' && (cat.includes('egypt') || cat.includes('arab_eg') || cat.includes('_eg') || cat.includes('arab_tv_eg'));
-    case 'middle_east': return ['ar','fa','tr','he','ur'].includes(lang) && !cat.includes('_eg') && !cat.includes('arab_eg');
-    case 'global':      return ['en','fr','es','de','it','pt','ru','zh','hi'].includes(lang) && !cat.includes('anime') && lang !== 'ar';
-    case 'musical':     return genres.includes('music') || genres.includes('musical') || cat.includes('music');
-    default:            return false;
+    case 'korean':
+      return lang === 'ko';
+    case 'anime':
+      return lang === 'ja' && (genres.includes('animation') || genres.includes('anime'));
+    case 'egyptian':
+      return lang === 'ar' && (cat.includes('egypt') || cat.includes('arab') || cat.includes('_eg'));
+    case 'middle_east':
+      return ['ar','fa','tr','he','ur'].includes(lang) && !cat.includes('egypt') && !cat.includes('_eg') && !cat.includes('arab_tv_eg');
+    case 'global':
+      return ['en','fr','es','de','it','pt','ru','zh','hi'].includes(lang) && !genres.includes('animation');
+    case 'musical':
+      return genres.includes('music');
+    default: return false;
   }
 }
 
 function _catMediaMatch(m) {
   const mt = (m.media_type || '').toLowerCase();
-  if (catMedia === 'movie') return mt === 'movie' || mt === '';
-  if (catMedia === 'tv')    return mt === 'tv' || mt === 'series';
-  return true;
+  return catMedia === 'movie' ? (mt === 'movie' || mt === '') : (mt === 'tv' || mt === 'series' || mt === 'tv_movie');
+}
+
+function _makeCatCard(m) {
+  const div = document.createElement('div');
+  div.className = 'movie-card';
+  div.onclick   = () => openMovieObj(m);
+  div.innerHTML = `<div class="poster-wrap">${m.poster_url
+    ? `<img src="${m.poster_url}" class="poster-img" loading="lazy" onerror="this.style.opacity=0.2">`
+    : '<div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;font-size:32px">&#127916;</div>'
+  }</div>
+  <div class="card-title">${safe(m.title || m.name || '')}</div>
+  <div class="card-meta"><span class="card-rating">&#9733;${parseFloat(m.vote_average||0).toFixed(1)}</span></div>`;
+  return div;
+}
+
+function _appendCatCards(from, to) {
+  const grid = $('categories-grid');
+  for (let i = from; i < to; i++) {
+    grid.appendChild(_makeCatCard(_catBuf[i]));
+  }
+  _catShown = to;
 }
 
 function _startCatStream() {
-  if (_catParser) { try { _catParser.abort(); } catch(e) {} _catParser = null; }
-  _catBuf      = [];
-  _catRendered = 0;
-  _catDone     = false;
-  _catLoading  = false;
-  _catTarget   = CAT_PER_PAGE;
+  const sessionId = ++_catStreamId;   // invalidates any running stream
+
+  _catBuf   = [];
+  _catShown = 0;
+  _catDone  = false;
 
   const grid = $('categories-grid');
-  grid.innerHTML = '<div style="grid-column:1/-1;padding:40px;text-align:center;color:var(--text2);font-size:12px"><span style="display:inline-block;width:18px;height:18px;border:2px solid var(--gold);border-top-color:transparent;border-radius:50%;animation:spin .7s linear infinite;vertical-align:middle;margin-right:8px"></span>Loading...</div>';
+  grid.innerHTML = '<div id="cat-spinner" style="grid-column:1/-1;padding:40px;text-align:center;color:#8892a8;font-size:13px">Loading\u2026</div>';
   $('cat-show-more').style.display = 'none';
 
-  _catLoading = true;
+  let firstBatchRendered = false;
+
   Papa.parse(csvDir + 'static_movies_series.csv', {
     download: true,
     header: true,
     skipEmptyLines: true,
-    step: function(row, parser) {
-      _catParser = parser;
+    step: function(row) {
+      if (sessionId !== _catStreamId) return;   // stale session — ignore
       const m = row.data;
       if (_matchCat(m, catCurrent) && _catMediaMatch(m)) {
         _catBuf.push(m);
-        if (_catBuf.length >= _catTarget) {
-          parser.pause();
-          _catLoading = false;
-          _renderCatGrid(true);
+        // Show first batch as soon as we have enough
+        if (!firstBatchRendered && _catBuf.length >= CAT_PER_PAGE) {
+          firstBatchRendered = true;
+          const spinner = document.getElementById('cat-spinner');
+          if (spinner) spinner.remove();
+          _appendCatCards(0, CAT_PER_PAGE);
+          $('cat-show-more').style.display = '';   // show "Show More" — more rows coming
         }
       }
     },
     complete: function() {
-      _catDone   = true;
-      _catLoading = false;
-      _catParser  = null;
-      _renderCatGrid(false);
+      if (sessionId !== _catStreamId) return;
+      _catDone = true;
+      const spinner = document.getElementById('cat-spinner');
+      if (spinner) spinner.remove();
+
+      if (_catBuf.length === 0) {
+        $('categories-grid').innerHTML = '<div style="grid-column:1/-1;padding:40px;text-align:center;color:#8892a8;font-size:13px">No titles found for this category.</div>';
+        $('cat-show-more').style.display = 'none';
+        return;
+      }
+      // Render anything we didn't render yet (less than CAT_PER_PAGE total)
+      if (!firstBatchRendered) {
+        if (_catShown === 0) $('categories-grid').innerHTML = '';
+        _appendCatCards(_catShown, _catBuf.length);
+      }
+      // Update Show More visibility
+      $('cat-show-more').style.display = (_catShown < _catBuf.length) ? '' : 'none';
     },
     error: function() {
-      _catLoading = false;
-      $('categories-grid').innerHTML = '<div style="grid-column:1/-1;padding:40px;text-align:center;color:var(--text2)">Could not load data.</div>';
+      if (sessionId !== _catStreamId) return;
+      $('categories-grid').innerHTML = '<div style="grid-column:1/-1;padding:40px;text-align:center;color:#c0392b;font-size:13px">&#9888; Could not load CSV. Check console.</div>';
     }
   });
-}
-
-function _renderCatGrid(moreExpected) {
-  const grid = $('categories-grid');
-  if (_catRendered === 0) grid.innerHTML = '';
-  const newItems = _catBuf.slice(_catRendered);
-  newItems.forEach(m => {
-    const div = document.createElement('div');
-    div.className = 'movie-card';
-    div.onclick   = () => openMovieObj(m);
-    div.innerHTML = `<div class="poster-wrap">${m.poster_url
-      ? `<img src="${m.poster_url}" class="poster-img" loading="lazy" onerror="this.style.opacity=0.2">`
-      : '<div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;font-size:32px">&#127916;</div>'
-    }</div>
-    <div class="card-title">${safe(m.title || m.name || '')}</div>
-    <div class="card-meta"><span class="card-rating">&#9733;${parseFloat(m.vote_average||0).toFixed(1)}</span></div>`;
-    grid.appendChild(div);
-  });
-  _catRendered = _catBuf.length;
-  if (_catRendered === 0 && !moreExpected) {
-    grid.innerHTML = '<div style="grid-column:1/-1;padding:40px;text-align:center;color:var(--text2);font-size:13px">No titles found for this category.</div>';
-  }
-  $('cat-show-more').style.display = (moreExpected && !_catDone) ? '' : 'none';
 }
 
 function initCategories() { _startCatStream(); }
@@ -1303,14 +1320,23 @@ function setCatMedia(media, el) {
 }
 
 function catShowMore() {
-  if (_catDone || _catLoading || !_catParser) return;
-  _catTarget += CAT_PER_PAGE;
-  $('cat-show-more').style.display = 'none';
-  _catLoading = true;
-  _catParser.resume();
+  if (!_catDone) {
+    // Stream still running — show what we have beyond current shown
+    if (_catBuf.length > _catShown) {
+      const nextEnd = Math.min(_catShown + CAT_PER_PAGE, _catBuf.length);
+      _appendCatCards(_catShown, nextEnd);
+      $('cat-show-more').style.display = (_catShown < _catBuf.length || !_catDone) ? '' : 'none';
+    }
+    // else stream not done yet but no new rows — hide button until complete fires
+  } else {
+    const nextEnd = Math.min(_catShown + CAT_PER_PAGE, _catBuf.length);
+    _appendCatCards(_catShown, nextEnd);
+    $('cat-show-more').style.display = (_catShown < _catBuf.length) ? '' : 'none';
+  }
 }
 
 function renderCategories() { _startCatStream(); }
+
 
 
 // ══════════════════════════════════════════════════════════
