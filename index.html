@@ -997,10 +997,10 @@ $('modal-content').innerHTML = `
    </div>
    ${cast.length?`
    <div class="detail-section-lbl">Cast</div>
-   <div class="cast-row">
-     ${cast.slice(0,8).map(name=>`
-       <div class="cast-chip" onclick="openActorByName('${name.replace(/'/g,"\\'")}')">
-         <div class="cast-avatar">👤</div>
+   <div class="cast-row" id="cast-row-${m.id}">
+     ${cast.slice(0,8).map((name,i)=>`
+       <div class="cast-chip" id="cast-chip-${m.id}-${i}" onclick="openActorByName('${name.replace(/'/g,"\\'")}')">
+         <img class="cast-avatar" id="cast-photo-${m.id}-${i}" src="" alt="" style="opacity:0;background:var(--bg4)" onerror="this.style.display='none'"><span class="cast-avatar" id="cast-fallback-${m.id}-${i}" style="display:none">👤</span>
          <span class="cast-name">${safe(name)}</span>
        </div>`).join('')}
    </div>`:''}
@@ -1017,6 +1017,28 @@ $('modal-content').innerHTML = `
    </div>`:''}
  </div>`;
 $('modal-overlay').classList.add('open');
+// Async: fetch actor photos from worker and inject into cast chips
+if (cast.length && _worker) {
+  _wSearchActors('').then(allActors => {
+    // Build a quick name→photo map from what the worker has
+    const photoMap = {};
+    allActors.forEach(a => { if (a.profile_url) photoMap[a.name] = a.profile_url; });
+    cast.slice(0,8).forEach((name, i) => {
+      const img = document.getElementById('cast-photo-'+m.id+'-'+i);
+      const fb  = document.getElementById('cast-fallback-'+m.id+'-'+i);
+      if (!img) return;
+      const url = photoMap[name];
+      if (url) {
+        img.onload  = () => { img.style.opacity = '1'; if(fb) fb.style.display='none'; };
+        img.onerror = () => { img.style.display='none'; if(fb) fb.style.display='flex'; };
+        img.src = url;
+      } else {
+        img.style.display = 'none';
+        if (fb) fb.style.display = 'flex';
+      }
+    });
+  });
+}
 }
 
 function closeModal(e) {
@@ -1413,6 +1435,8 @@ doSearch();
 
 function openActorObj(a) {
 if (!a || !a.name) return;
+// Close the movie modal if it's open
+$('modal-overlay').classList.remove('open');
 const movies = (a.top_movies||'').split(',').map(s=>s.trim()).filter(Boolean);
 $('actor-page-content').innerHTML = `
    <div class="actor-hero">
@@ -2252,9 +2276,14 @@ function _startSearchWorker(base) {
     if (type === 'MOVIES_READY') {
       _workerReady = true; _phase2Done = true;
       updateLoadingBadge(null);
-      if (currentPage === 'search')    doSearch();
-      if (currentPage === 'top-rated') typeof renderTopRated === 'function' && renderTopRated();
-      if (currentPage === 'year')      typeof renderYear     === 'function' && renderYear();
+      if (currentPage === 'search')     doSearch();
+      if (currentPage === 'top-rated')  typeof renderTopRated === 'function' && renderTopRated();
+      if (currentPage === 'year')       typeof renderYear     === 'function' && renderYear();
+      if (currentPage === 'categories') _loadAndRender();
+      // Pre-warm category CSVs in the worker so first tab visit is instant
+      const _b = csvDir || 'csv_output/';
+      _worker.postMessage({ type: 'LOAD_CAT', data: { cat:'korean', media:'movie', offset:0, limit:1, url:_b+'mega_movies.csv',  requestId:-1 } });
+      _worker.postMessage({ type: 'LOAD_CAT', data: { cat:'korean', media:'tv',    offset:0, limit:1, url:_b+'mega_series.csv', requestId:-2 } });
     }
     if (type === 'ACTORS_READY') {
       updateLoadingBadge(null);
