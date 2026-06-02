@@ -2141,9 +2141,10 @@ error: () => resolve([])
 let _phase2Done = false;
 let _phase2Promise = null;
 
+const csvDir = 'csv_output/';
+
 async function loadAllData() {
 showLoadingOverlay('Loading cinema data…');
-const csvDir = 'csv_output/'; // global — used by categories, search, etc.
 
 // ══ PHASE 1 — small, critical CSVs only (~5–10 MB) ════════════════════════
 // static_movies_series.csv is intentionally excluded — loaded async in Phase 2
