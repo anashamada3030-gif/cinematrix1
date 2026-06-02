@@ -1190,38 +1190,37 @@ content.innerHTML = `<div style="display:grid;grid-template-columns:repeat(auto-
 // ══════════════════════════════════════════════════════════
 // CATEGORIES - progressive streaming, paginated display
 // ══════════════════════════════════════════════════════════
+// ══════════════════════════════════════════════════════════
+// CATEGORIES  —  mega_movies.csv / mega_series.csv
+// loads once per media-type, caches, paginates 30 at a time
+// ══════════════════════════════════════════════════════════
 let catCurrent = 'korean', catMedia = 'movie';
 const CAT_PER_PAGE = 30;
 
-let _catBuf      = [];     // ALL matched rows collected so far
-let _catShown    = 0;      // how many cards are in the DOM
-let _catDone     = false;  // stream finished
-let _catStreamId = 0;      // session ID — lets us abort stale streams
+// Cache per media type so switching tabs is instant after first load
+const _catCache = { movie: null, tv: null };   // null=not loaded, []=loading, [...]=ready
+let _catLoadingMedia = null;                   // which media is currently fetching
+let _catShown = 0;                             // cards currently in DOM
+
+const _catCsvFile = { movie: 'mega_movies.csv', tv: 'mega_series.csv' };
 
 function _matchCat(m, uiCat) {
   const lang   = (m.original_language || '').toLowerCase().trim();
-  const cat    = (m.category  || '').toLowerCase();
-  const genres = (m.genres    || '').toLowerCase();
+  const genres = (m.genres || '').toLowerCase();
   switch (uiCat) {
-    case 'korean':
-      return lang === 'ko';
-    case 'anime':
-      return lang === 'ja' && (genres.includes('animation') || genres.includes('anime'));
-    case 'egyptian':
-      return lang === 'ar' && (cat.includes('egypt') || cat.includes('arab') || cat.includes('_eg'));
-    case 'middle_east':
-      return ['ar','fa','tr','he','ur'].includes(lang) && !cat.includes('egypt') && !cat.includes('_eg') && !cat.includes('arab_tv_eg');
-    case 'global':
-      return ['en','fr','es','de','it','pt','ru','zh','hi'].includes(lang) && !genres.includes('animation');
-    case 'musical':
-      return genres.includes('music');
-    default: return false;
+    case 'korean':      return lang === 'ko';
+    case 'anime':       return lang === 'ja' && genres.includes('animation');
+    case 'egyptian':    return lang === 'ar';
+    case 'middle_east': return ['fa','tr','he','ur'].includes(lang);
+    case 'global':      return ['en','fr','es','de','it','pt','ru','zh','hi'].includes(lang);
+    case 'musical':     return genres.includes('music');
+    default:            return false;
   }
 }
 
-function _catMediaMatch(m) {
-  const mt = (m.media_type || '').toLowerCase();
-  return catMedia === 'movie' ? (mt === 'movie' || mt === '') : (mt === 'tv' || mt === 'series' || mt === 'tv_movie');
+function _filteredRows() {
+  const pool = _catCache[catMedia] || [];
+  return pool.filter(m => _matchCat(m, catCurrent));
 }
 
 function _makeCatCard(m) {
@@ -1237,105 +1236,93 @@ function _makeCatCard(m) {
   return div;
 }
 
-function _appendCatCards(from, to) {
+function _renderCatPage(resetScroll) {
+  const data = _filteredRows();
   const grid = $('categories-grid');
-  for (let i = from; i < to; i++) {
-    grid.appendChild(_makeCatCard(_catBuf[i]));
+
+  if (data.length === 0) {
+    grid.innerHTML = '<div style="grid-column:1/-1;padding:40px;text-align:center;color:#8892a8;font-size:13px">No titles found for this category.</div>';
+    $('cat-show-more').style.display = 'none';
+    return;
   }
-  _catShown = to;
+
+  if (resetScroll) {
+    grid.innerHTML = '';
+    _catShown = 0;
+  }
+
+  const nextEnd = Math.min(_catShown + CAT_PER_PAGE, data.length);
+  for (let i = _catShown; i < nextEnd; i++) {
+    grid.appendChild(_makeCatCard(data[i]));
+  }
+  _catShown = nextEnd;
+  $('cat-show-more').style.display = _catShown < data.length ? '' : 'none';
 }
 
-function _startCatStream() {
-  const sessionId = ++_catStreamId;   // invalidates any running stream
+function _loadAndRender() {
+  const media = catMedia;
 
-  _catBuf   = [];
-  _catShown = 0;
-  _catDone  = false;
+  // Already loaded — render instantly
+  if (_catCache[media] !== null) {
+    _renderCatPage(true);
+    return;
+  }
+
+  // Already fetching — wait (complete callback will call _renderCatPage)
+  if (_catLoadingMedia === media) return;
+
+  // Start fetch
+  _catLoadingMedia = media;
+  _catCache[media] = [];  // mark as loading
 
   const grid = $('categories-grid');
   grid.innerHTML = '<div id="cat-spinner" style="grid-column:1/-1;padding:40px;text-align:center;color:#8892a8;font-size:13px">Loading\u2026</div>';
   $('cat-show-more').style.display = 'none';
 
-  let firstBatchRendered = false;
-
-  Papa.parse(csvDir + 'static_movies_series.csv', {
+  Papa.parse(csvDir + _catCsvFile[media], {
     download: true,
     header: true,
     skipEmptyLines: true,
-    step: function(row) {
-      if (sessionId !== _catStreamId) return;   // stale session — ignore
-      const m = row.data;
-      if (_matchCat(m, catCurrent) && _catMediaMatch(m)) {
-        _catBuf.push(m);
-        // Show first batch as soon as we have enough
-        if (!firstBatchRendered && _catBuf.length >= CAT_PER_PAGE) {
-          firstBatchRendered = true;
-          const spinner = document.getElementById('cat-spinner');
-          if (spinner) spinner.remove();
-          _appendCatCards(0, CAT_PER_PAGE);
-          $('cat-show-more').style.display = '';   // show "Show More" — more rows coming
-        }
-      }
-    },
-    complete: function() {
-      if (sessionId !== _catStreamId) return;
-      _catDone = true;
-      const spinner = document.getElementById('cat-spinner');
-      if (spinner) spinner.remove();
-
-      if (_catBuf.length === 0) {
-        $('categories-grid').innerHTML = '<div style="grid-column:1/-1;padding:40px;text-align:center;color:#8892a8;font-size:13px">No titles found for this category.</div>';
-        $('cat-show-more').style.display = 'none';
-        return;
-      }
-      // Render anything we didn't render yet (less than CAT_PER_PAGE total)
-      if (!firstBatchRendered) {
-        if (_catShown === 0) $('categories-grid').innerHTML = '';
-        _appendCatCards(_catShown, _catBuf.length);
-      }
-      // Update Show More visibility
-      $('cat-show-more').style.display = (_catShown < _catBuf.length) ? '' : 'none';
+    complete: function(results) {
+      _catCache[media] = results.data;
+      _catLoadingMedia = null;
+      // Only render if this is still the active media type
+      if (catMedia === media) _renderCatPage(true);
     },
     error: function() {
-      if (sessionId !== _catStreamId) return;
-      $('categories-grid').innerHTML = '<div style="grid-column:1/-1;padding:40px;text-align:center;color:#c0392b;font-size:13px">&#9888; Could not load CSV. Check console.</div>';
+      _catLoadingMedia = null;
+      _catCache[media] = null;  // allow retry
+      $('categories-grid').innerHTML = '<div style="grid-column:1/-1;padding:40px;text-align:center;color:#c0392b;font-size:13px">&#9888; Could not load data. Check your connection.</div>';
     }
   });
 }
 
-function initCategories() { _startCatStream(); }
+// ── Public interface ──────────────────────────────────────
+
+function initCategories() { _loadAndRender(); }
 
 function setCategory(cat, el) {
   catCurrent = cat;
   document.querySelectorAll('.cat-tab').forEach(c => c.classList.remove('active'));
   el.classList.add('active');
-  _startCatStream();
+  _catShown = 0;
+  _renderCatPage(true);   // cache already warm — instant
 }
 
 function setCatMedia(media, el) {
   catMedia = media;
   document.querySelectorAll('.cat-media-toggle .toggle-btn').forEach(b => b.classList.remove('active'));
   el.classList.add('active');
-  _startCatStream();
+  _catShown = 0;
+  _loadAndRender();       // fetch if not cached yet
 }
 
 function catShowMore() {
-  if (!_catDone) {
-    // Stream still running — show what we have beyond current shown
-    if (_catBuf.length > _catShown) {
-      const nextEnd = Math.min(_catShown + CAT_PER_PAGE, _catBuf.length);
-      _appendCatCards(_catShown, nextEnd);
-      $('cat-show-more').style.display = (_catShown < _catBuf.length || !_catDone) ? '' : 'none';
-    }
-    // else stream not done yet but no new rows — hide button until complete fires
-  } else {
-    const nextEnd = Math.min(_catShown + CAT_PER_PAGE, _catBuf.length);
-    _appendCatCards(_catShown, nextEnd);
-    $('cat-show-more').style.display = (_catShown < _catBuf.length) ? '' : 'none';
-  }
+  _renderCatPage(false);
 }
 
-function renderCategories() { _startCatStream(); }
+function renderCategories() { _loadAndRender(); }
+
 
 
 
