@@ -1187,21 +1187,44 @@ $('year-nav').innerHTML = years.map(y =>
 if (!DATA.moviesByYear.length) {
   const content = $('year-content');
   if (content) content.innerHTML = '<div style="padding:40px;text-align:center;color:#8892a8;font-size:13px">⏳ Loading movies…</div>';
-  fetchTable('movies_by_year', 'static_movies_by_year.csv').then(rows => {
-    DATA.moviesByYear = rows.length ? rows : [];
-    if (!DATA.moviesByYear.length) {
-      // CSV may have failed; try direct CSV parse as last resort
-      return parseCSV('csv_output/static_movies_by_year.csv').then(r => {
-        DATA.moviesByYear = r;
-        renderYear();
-      });
+
+  async function _loadMoviesByYear() {
+    // 1. Try JSON (fastest, no PapaParse needed)
+    try {
+      const r = await fetch('csv_output/movies_by_year.json');
+      if (r.ok) {
+        const rows = await r.json();
+        if (Array.isArray(rows) && rows.length) return rows;
+      }
+    } catch(e) { console.warn('[Year] JSON load failed:', e.message); }
+
+    // 2. Try Supabase REST if connected
+    if (window.USE_REST_API) {
+      try {
+        const headers = { 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${SUPABASE_KEY}` };
+        const pages = [];
+        for (let offset = 0; offset < 3000; offset += 1000) {
+          pages.push(fetch(
+            `${SUPABASE_URL}/rest/v1/movies_by_year?select=*&limit=1000&offset=${offset}`,
+            { headers }
+          ).then(r => r.ok ? r.json() : []));
+        }
+        const results = (await Promise.all(pages)).flat();
+        if (Array.isArray(results) && results.length) return results;
+      } catch(e) { console.warn('[Year] Supabase load failed:', e.message); }
     }
+
+    // 3. Fall back to CSV via PapaParse
+    return parseCSV('csv_output/static_movies_by_year.csv');
+  }
+
+  _loadMoviesByYear().then(rows => {
+    DATA.moviesByYear = Array.isArray(rows) ? rows : [];
     renderYear();
   }).catch(() => {
-    const content = $('year-content');
-    if (content) content.innerHTML = '<div class="empty-state"><div class="empty-state-icon">⚠️</div><div>Failed to load data</div></div>';
+    DATA.moviesByYear = [];
+    renderYear(); // will show "No data" gracefully
   });
-  // Don't call renderYear() yet — data is still loading
   return;
 }
 // Data already loaded — render immediately
