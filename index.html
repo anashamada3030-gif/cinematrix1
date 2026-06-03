@@ -1176,6 +1176,13 @@ $('awards-content').innerHTML = years.map(y => `
 let selectedYear = '2026';
 
 function initYear() {
+// Lazy-load movies_by_year on first visit
+if (!DATA.moviesByYear.length) {
+  fetchTable('movies_by_year', 'static_movies_by_year.csv').then(rows => {
+    DATA.moviesByYear = rows;
+    renderYear();
+  });
+}
 const years = [];
 for (let y = 2026; y >= 2010; y--) years.push(String(y));
 $('year-nav').innerHTML = years.map(y =>
@@ -1374,32 +1381,39 @@ if (searchType === 'actor') {
   return;
 }
 
-// ── Seed results from already-loaded small CSVs (instant) ────────────────
-const seen = new Set();
-const addDeduped = (arr, out) => arr.forEach(m => {
-  const k = String(m.id)+String(m.media_type);
-  if (!seen.has(k)) { seen.add(k); out.push(m); }
-});
-const seedPool = [];
-addDeduped(DATA.newReleases, seedPool);
-addDeduped(DATA.topRated,    seedPool);
-
+// ── Direct Supabase query — only fetch what matches, 60 results ────────────────
 const mType = searchType === 'all' ? '' : searchType;
-const seedFiltered = seedPool.filter(m => {
-  if (mType === 'movie' && m.media_type !== 'movie') return false;
-  if (mType === 'tv'    && m.media_type !== 'tv')    return false;
-  if (searchGenre && !(m.genres||'').toLowerCase().includes(searchGenre.toLowerCase())) return false;
-  if (searchMinRating && parseFloat(m.vote_average||0) < searchMinRating) return false;
-  if (!q) return true;
-  return (m.title||'').toLowerCase().includes(q) ||
-         (m.original_title||'').toLowerCase().includes(q) ||
-         (m.cast||'').toLowerCase().includes(q);
-});
 
-const hint = !_phase2Done
-  ? `<div style="grid-column:1/-1;padding:8px 0 4px;font-size:11px;color:var(--gold)">⏳ Full library indexing — showing partial results</div>`
-  : '';
-results.innerHTML = hint + seedFiltered.slice(0,60).map(m => {
+results.innerHTML = '<div style="padding:20px;color:var(--text2);font-size:12px">🔍 Searching…</div>';
+
+let searchRows = [];
+
+if (window.USE_REST_API) {
+  // Query Supabase directly with filters — no full table download needed
+  const headers = { 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${SUPABASE_KEY}` };
+  let url = `${SUPABASE_URL}/rest/v1/movies_series?select=id,title,original_title,media_type,vote_average,release_date,poster_url,genres&limit=60&order=vote_average.desc`;
+  if (q) url += `&or=(title.ilike.*${encodeURIComponent(q)}*,original_title.ilike.*${encodeURIComponent(q)}*)`;
+  if (mType === 'movie') url += '&media_type=eq.movie';
+  if (mType === 'tv')    url += '&media_type=eq.tv';
+  if (searchGenre)       url += `&genres=ilike.*${encodeURIComponent(searchGenre)}*`;
+  if (searchMinRating)   url += `&vote_average=gte.${searchMinRating}`;
+  try {
+    const resp = await fetch(url, { headers });
+    if (resp.ok) searchRows = await resp.json();
+  } catch(e) { console.warn('Search query failed, falling back to worker:', e); }
+}
+
+// Fallback: search worker (CSV streaming)
+if (!searchRows.length && _worker) {
+  searchRows = await _wSearch(q, mType, searchGenre, searchMinRating);
+}
+
+if (!searchRows.length) {
+  results.innerHTML = `<div style="padding:40px;text-align:center;color:var(--text2)">No results for "<b>${safe(q)}</b>"</div>`;
+  return;
+}
+
+results.innerHTML = searchRows.map(m => {
   const r = getMovieIdx(m);
   return `<div class="movie-card" onclick="openMovieObj(movieRegistry[${r}])">
     <div class="poster-wrap">${m.poster_url?`<img src="${m.poster_url}" class="poster-img" loading="lazy" onerror="this.style.opacity=0.2">`:'<span style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);font-size:32px">🎬</span>'}</div>
@@ -1407,25 +1421,8 @@ results.innerHTML = hint + seedFiltered.slice(0,60).map(m => {
     <div class="card-meta"><span class="card-rating">★${parseFloat(m.vote_average||0).toFixed(1)}</span> ${m.media_type==='tv'?'📺':'🎬'} ${(m.release_date||m.year||'').slice(0,4)}</div>
   </div>`;
 }).join('');
+}
 
-// ── Full results from Worker — enriches display (only ≤60 rows ever sent) ─
-if (_worker) {
-  const workerRes = await _wSearch(q, mType, searchGenre, searchMinRating);
-  if (workerRes.length) {
-    const merged = [...workerRes];
-    workerRes.forEach(m => { const k=String(m.id)+m.media_type; seen.add(k); });
-    seedFiltered.forEach(m => { const k=String(m.id)+m.media_type; if(!seen.has(k)){seen.add(k);merged.push(m);} });
-    results.innerHTML = merged.slice(0,60).map(m => {
-      const r = getMovieIdx(m);
-      return `<div class="movie-card" onclick="openMovieObj(movieRegistry[${r}])">
-        <div class="poster-wrap">${m.poster_url?`<img src="${m.poster_url}" class="poster-img" loading="lazy" onerror="this.style.opacity=0.2">`:'<span style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);font-size:32px">🎬</span>'}</div>
-        <div class="card-title">${safe(m.title||m.name||'')}</div>
-        <div class="card-meta"><span class="card-rating">★${parseFloat(m.vote_average||0).toFixed(1)}</span> ${m.media_type==='tv'?'📺':'🎬'} ${(m.release_date||m.year||'').slice(0,4)}</div>
-      </div>`;
-    }).join('');
-  }
-}
-}
 
 // ══════════════════════════════════════════════════════════
 // ACTORS
@@ -1531,6 +1528,14 @@ $('mood-results').style.display = 'none';
 let recQueue = [], recIdx = 0, genreLikes = {}, genreDislikes = {};
 
 function initRec() {
+if (!DATA.recPool.length) {
+  fetchTable('recommendation_pool', 'recommendation_pool.csv').then(rows => {
+    DATA.recPool = rows;
+    recQueue = [...DATA.recPool].sort(() => Math.random()-0.5).slice(0,10);
+    renderRec();
+  });
+  return;
+}
 recQueue = [...DATA.recPool].sort(() => Math.random()-0.5).slice(0,10);
 recIdx = 0; genreLikes = {}; genreDislikes = {};
 $('rec-final-results').style.display = 'none';
@@ -2176,22 +2181,23 @@ async function loadAllData() {
     actors, moodData, recPool, cinemaGalaxy, cinemaWorld, egyptRaw,
     genreFreq, coocRaw, pointCloud, egyptPivotRaw
   ] = await Promise.all([
-    fetchTable('new_releases',        'dynamic_new_releases.csv'),
-    fetchTable('top_rated',           'dynamic_top_rated.csv'),
-    fetchTable('reviews',             'dynamic_reviews.csv'),
-    fetchTable('movies_series',       'static_movies_series.csv'),
-    fetchTable('awards',              'static_awards.csv'),
-    fetchTable('movies_by_year',      'static_movies_by_year.csv'),
-    fetchTable('actors',              'static_actors.csv'),
-    fetchTable('mood_recommendations','recommendation_mood.csv'),
-    fetchTable('recommendation_pool', 'recommendation_pool.csv'),
-    fetchTable('cinema_galaxy',       'static_cinema_galaxy.csv'),
-    parseCSV(csvDir+'static_cinema_world.csv'), // CSV has all 137 countries; Supabase table is incomplete
-    fetchTable('egypt_cinemas',       'egypt_cinema_20260508_1117.csv'),
-    fetchTable('genre_frequency',     'analytics_genre_frequency.csv'),
-    fetchTable('genre_cooccurrence',  'analytics_genre_cooccurrence.csv'),
-    fetchTable('point_cloud',         'analytics_point_cloud.csv'),
-    parseCSV(csvDir+'egypt_cinema_pivoted_days.csv')  // pivot CSV stays as CSV
+    // ── PHASE 1: Small tables needed immediately for homepage ──
+    fetchTable('new_releases',        'dynamic_new_releases.csv'),        // ~400 rows
+    fetchTable('top_rated',           'dynamic_top_rated.csv'),           // ~400 rows
+    fetchTable('reviews',             'dynamic_reviews.csv'),             // ~860 rows
+    Promise.resolve([]),   // movies_series — NOT loaded upfront; search worker streams it on demand
+    fetchTable('awards',              'static_awards.csv'),               // ~187 rows
+    Promise.resolve([]),   // movies_by_year — loaded on demand when Year page opens
+    fetchTable('actors',              'static_actors.csv'),               // ~179 rows
+    fetchTable('mood_recommendations','recommendation_mood.csv'),         // ~744 rows
+    Promise.resolve([]),   // recommendation_pool — loaded on demand when Recommend page opens
+    Promise.resolve([]),   // cinema_galaxy — loaded in its own iframe, not needed here
+    parseCSV(csvDir+'static_cinema_world.csv'), // world map — CSV has full 137 countries
+    fetchTable('egypt_cinemas',       'egypt_cinema_20260508_1117.csv'),  // Egypt section
+    fetchTable('genre_frequency',     'analytics_genre_frequency.csv'),   // 27 rows
+    fetchTable('genre_cooccurrence',  'analytics_genre_cooccurrence.csv'),// 27 rows
+    Promise.resolve([]),   // point_cloud — loaded on demand when Analytics page opens
+    parseCSV(csvDir+'egypt_cinema_pivoted_days.csv')  // pivot CSV
   ]);
 
 // actors, moviesByYear deferred too — load after UI is visible
