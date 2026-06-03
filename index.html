@@ -2568,20 +2568,22 @@ window.addEventListener('DOMContentLoaded', () => {
   const script = document.createElement('script');
   script.src = 'https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js';
   script.onload = async () => {
-    // Silently probe Supabase — if it works we'll use it; if not, CSVs kick in automatically
+    // Silently probe Supabase — check HTTP 200 only (tables may be empty but connection valid)
     try {
       const probe = await fetch(
         `${SUPABASE_URL}/rest/v1/new_releases?select=id&limit=1`,
         { headers: { 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${SUPABASE_KEY}` } }
       );
       if (probe.ok) {
-        const rows = await probe.json();
-        if (Array.isArray(rows) && rows.length > 0) {
-          window.USE_REST_API = true;
-          console.log('✅ Supabase connected — loading data from Supabase');
-        }
+        window.USE_REST_API = true;
+        console.log('✅ Supabase connected — loading data from Supabase');
+      } else {
+        const errText = await probe.text().catch(()=>'');
+        console.warn('⚠️ Supabase probe returned', probe.status, errText);
       }
-    } catch(e) { /* ignore — will use CSV fallback */ }
+    } catch(e) {
+      console.warn('⚠️ Supabase probe failed:', e.message);
+    }
     if (!window.USE_REST_API) {
       console.log('ℹ️ Supabase not available — loading data from CSV files');
     }
