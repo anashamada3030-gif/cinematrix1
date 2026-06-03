@@ -1178,10 +1178,13 @@ let selectedYear = '2026';
 function initYear() {
 // Lazy-load movies_by_year on first visit
 if (!DATA.moviesByYear.length) {
+  const content = $('year-content');
+  if (content) content.innerHTML = '<div style="padding:40px;text-align:center;color:#8892a8;font-size:13px">Loading…</div>';
   fetchTable('movies_by_year', 'static_movies_by_year.csv').then(rows => {
     DATA.moviesByYear = rows;
     renderYear();
   });
+  // Build year nav while data loads
 }
 const years = [];
 for (let y = 2026; y >= 2010; y--) years.push(String(y));
@@ -1391,8 +1394,8 @@ let searchRows = [];
 if (window.USE_REST_API) {
   // Query Supabase directly with filters — no full table download needed
   const headers = { 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${SUPABASE_KEY}` };
-  let url = `${SUPABASE_URL}/rest/v1/movies_series?select=id,title,original_title,media_type,vote_average,release_date,poster_url,genres&limit=60&order=vote_average.desc`;
-  if (q) url += `&or=(title.ilike.*${encodeURIComponent(q)}*,original_title.ilike.*${encodeURIComponent(q)}*)`;
+  let url = `${SUPABASE_URL}/rest/v1/movies_series?select=id,title,original_title,media_type,vote_average,release_date,poster_url,genres,cast,overview,trailer_url,backdrop_url&limit=60&order=vote_average.desc`;
+  if (q) url += '&or=(title.ilike.*' + encodeURIComponent(q) + '*,original_title.ilike.*' + encodeURIComponent(q) + '*,cast.ilike.*' + encodeURIComponent(q) + '*)';
   if (mType === 'movie') url += '&media_type=eq.movie';
   if (mType === 'tv')    url += '&media_type=eq.tv';
   if (searchGenre)       url += `&genres=ilike.*${encodeURIComponent(searchGenre)}*`;
@@ -2305,22 +2308,15 @@ initAll();
 _phase2Done = false;
 _workerReady = false;
 _startSearchWorker(csvDir);
-// If Supabase loaded data, inject it into the worker for fast in-memory search
-if (window.USE_REST_API && DATA.moviesSeries && DATA.moviesSeries.length > 0) {
-  // Small delay to ensure worker is ready
+// If actors already loaded from Supabase, inject them into worker immediately
+if (DATA.actors && DATA.actors.length > 0) {
   setTimeout(() => {
     if (_worker) {
-      _worker.postMessage({ type: 'LOAD_DATA', data: {
-        movies: DATA.moviesSeries,
-        actors: DATA.actors
-      }});
+      _worker.postMessage({ type: 'LOAD_DATA', data: { actors: DATA.actors } });
     }
-  }, 200);
-} else {
-  // Fall through: worker will stream CSVs itself
-  _worker && _worker.postMessage({ type: 'LOAD_MOVIES', data: { url: csvDir + 'static_movies_series.csv' } });
-  _worker && _worker.postMessage({ type: 'LOAD_ACTORS', data: { url: csvDir + 'static_actors.csv' } });
+  }, 100);
 }
+// movies_series is never pre-loaded; worker always streams CSV for categories/browse
 }
 
 // ── Worker bootstrap — streams heavy CSVs off-thread ─────────────────────────
