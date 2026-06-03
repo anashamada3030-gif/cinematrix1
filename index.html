@@ -2132,30 +2132,50 @@ let _phase2Promise = null;
 
 const csvDir = 'csv_output/';
 
+// ── Fetch helper: tries Supabase REST first, falls back to CSV ────────────────
+async function fetchTable(supabaseTable, csvFile, limit = 5000) {
+  if (window.USE_REST_API) {
+    try {
+      const resp = await fetch(
+        `${SUPABASE_URL}/rest/v1/${supabaseTable}?select=*&limit=${limit}`,
+        { headers: { 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${SUPABASE_KEY}` } }
+      );
+      if (resp.ok) {
+        const data = await resp.json();
+        if (Array.isArray(data) && data.length > 0) {
+          console.log(`✅ Supabase: ${supabaseTable} (${data.length} rows)`);
+          return data;
+        }
+      }
+    } catch(e) { /* fall through to CSV */ }
+    console.warn(`⚠️ Supabase ${supabaseTable} unavailable, using CSV fallback`);
+  }
+  return parseCSV(csvDir + csvFile);
+}
+
 async function loadAllData() {
   showLoadingOverlay('Loading cinema data…');
-  const csvDir = 'csv_output/';
   const [
     newReleases, topRated, reviews, moviesSeries, awards, moviesByYear,
     actors, moodData, recPool, cinemaGalaxy, cinemaWorld, egyptRaw,
     genreFreq, coocRaw, pointCloud, egyptPivotRaw
   ] = await Promise.all([
-    parseCSV(csvDir+'dynamic_new_releases.csv'),
-    parseCSV(csvDir+'dynamic_top_rated.csv'),
-    parseCSV(csvDir+'dynamic_reviews.csv'),
-    parseCSV(csvDir+'static_movies_series.csv'),
-    parseCSV(csvDir+'static_awards.csv'),
-    parseCSV(csvDir+'static_movies_by_year.csv'),
-    parseCSV(csvDir+'static_actors.csv'),
-    parseCSV(csvDir+'recommendation_mood.csv'),
-    parseCSV(csvDir+'recommendation_pool.csv'),
-    parseCSV(csvDir+'static_cinema_galaxy.csv'),
-    parseCSV(csvDir+'static_cinema_world.csv'),
-    parseCSV(csvDir+'egypt_cinema_20260508_1117.csv'),
-    parseCSV(csvDir+'analytics_genre_frequency.csv'),
-    parseCSV(csvDir+'analytics_genre_cooccurrence.csv'),
-    parseCSV(csvDir+'analytics_point_cloud.csv'),
-    parseCSV(csvDir+'egypt_cinema_pivoted_days.csv')
+    fetchTable('new_releases',        'dynamic_new_releases.csv'),
+    fetchTable('top_rated',           'dynamic_top_rated.csv'),
+    fetchTable('reviews',             'dynamic_reviews.csv'),
+    fetchTable('movies_series',       'static_movies_series.csv'),
+    fetchTable('awards',              'static_awards.csv'),
+    fetchTable('movies_by_year',      'static_movies_by_year.csv'),
+    fetchTable('actors',              'static_actors.csv'),
+    fetchTable('mood_recommendations','recommendation_mood.csv'),
+    fetchTable('recommendation_pool', 'recommendation_pool.csv'),
+    fetchTable('cinema_galaxy',       'static_cinema_galaxy.csv'),
+    fetchTable('cinema_world',        'static_cinema_world.csv'),
+    fetchTable('egypt_cinemas',       'egypt_cinema_20260508_1117.csv'),
+    fetchTable('genre_frequency',     'analytics_genre_frequency.csv'),
+    fetchTable('genre_cooccurrence',  'analytics_genre_cooccurrence.csv'),
+    fetchTable('point_cloud',         'analytics_point_cloud.csv'),
+    parseCSV(csvDir+'egypt_cinema_pivoted_days.csv')  // pivot CSV stays as CSV
   ]);
 
 // actors, moviesByYear deferred too — load after UI is visible
@@ -2401,61 +2421,7 @@ document.querySelectorAll('.tl-mode-btn').forEach(b => b.classList.remove('activ
 if (el) el.classList.add('active');
 }
 
-window.addEventListener('DOMContentLoaded', () => {
-  console.log('🎬 CineMatrix: Loading Supabase JS library...');
-  const script = document.createElement('script');
-  script.src = 'https://esm.sh/v135/@supabase/supabase-js@2.39.0/dist/module.mjs';
-  script.type = 'module';
-  script.onload = async () => {
-    console.log('✅ Supabase JS library loaded');
-    console.log('🔄 Starting data load from Supabase...');
-    try {
-      // ESM imports work, but we loaded it globally - need different approach
-      // Use alternative: fetch via REST API instead of JS client
-      const response = await fetch(`${SUPABASE_URL}/rest/v1/new_releases?select=*`, {
-        headers: {
-          'apikey': SUPABASE_KEY,
-          'Authorization': `Bearer ${SUPABASE_KEY}`
-        }
-      });
-      
-      if (!response.ok) throw new Error(`HTTP ${response.status}`);
-      
-      // If REST API works, use it for all tables
-      console.log('✅ Supabase REST API accessible');
-      window.USE_REST_API = true;
-      await loadAllData();
-      console.log('✅ All data loaded successfully');
-    } catch (err) {
-      console.error('❌ Error loading data:', err);
-      hideLoadingOverlay();
-      $('main').innerHTML = `
-        <div style="padding:60px 28px;text-align:center;color:var(--text2)">
-          <div style="font-size:36px;margin-bottom:16px">⚠️</div>
-          <div style="font-size:16px;color:var(--text);margin-bottom:8px">Error Loading Data</div>
-          <div style="font-size:12px;margin-bottom:12px">${err.message || 'Unknown error'}</div>
-          <div style="font-size:11px;color:#888">Check browser console (F12) for details</div>
-        </div>`;
-    }
-  };
-  script.onerror = (err) => {
-    console.error('❌ Failed to load Supabase JS library:', err);
-    // Fallback: try REST API directly without library
-    console.log('🔄 Attempting fallback REST API mode...');
-    window.USE_REST_API = true;
-    loadAllData().catch(e => {
-      hideLoadingOverlay();
-      $('main').innerHTML = `
-        <div style="padding:60px 28px;text-align:center;color:var(--text2)">
-          <div style="font-size:36px;margin-bottom:16px">⚠️</div>
-          <div style="font-size:16px;color:var(--text);margin-bottom:8px">Cannot load Supabase</div>
-          <div style="font-size:12px;margin-bottom:12px">Network error</div>
-          <div style="font-size:11px;color:#888">Check your internet connection</div>
-        </div>`;
-    });
-  };
-  document.head.appendChild(script);
-});
+// Supabase check is handled in the bootstrap below
 // ══════════════════════════════════════════════════════════
 let wmInited = false;
 
@@ -2598,17 +2564,44 @@ document.getElementById('wm-map').innerHTML =
 }
 
 window.addEventListener('DOMContentLoaded', () => {
+  // Load PapaParse (needed for CSV fallback), then silently test Supabase
   const script = document.createElement('script');
   script.src = 'https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js';
-  script.onload = () => loadAllData();
+  script.onload = async () => {
+    // Silently probe Supabase — if it works we'll use it; if not, CSVs kick in automatically
+    try {
+      const probe = await fetch(
+        `${SUPABASE_URL}/rest/v1/new_releases?select=id&limit=1`,
+        { headers: { 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${SUPABASE_KEY}` } }
+      );
+      if (probe.ok) {
+        const rows = await probe.json();
+        if (Array.isArray(rows) && rows.length > 0) {
+          window.USE_REST_API = true;
+          console.log('✅ Supabase connected — loading data from Supabase');
+        }
+      }
+    } catch(e) { /* ignore — will use CSV fallback */ }
+    if (!window.USE_REST_API) {
+      console.log('ℹ️ Supabase not available — loading data from CSV files');
+    }
+    loadAllData();
+  };
   script.onerror = () => {
-    hideLoadingOverlay();
-    $('main').innerHTML = `
-      <div style="padding:60px 28px;text-align:center;color:var(--text2)">
-        <div style="font-size:36px;margin-bottom:16px">⚠️</div>
-        <div style="font-size:16px;color:var(--text);margin-bottom:8px">Cannot load CSV data</div>
-        <div style="font-size:12px">Run via local server: <code style="color:var(--gold)">python -m http.server 8080</code></div>
-      </div>`;
+    // PapaParse CDN failed — try loading from a mirror
+    const fallback = document.createElement('script');
+    fallback.src = 'https://unpkg.com/papaparse@5.4.1/papaparse.min.js';
+    fallback.onload = () => loadAllData();
+    fallback.onerror = () => {
+      hideLoadingOverlay();
+      $('main').innerHTML = `
+        <div style="padding:60px 28px;text-align:center;color:var(--text2)">
+          <div style="font-size:36px;margin-bottom:16px">⚠️</div>
+          <div style="font-size:16px;color:var(--text);margin-bottom:8px">Network Error</div>
+          <div style="font-size:12px">Could not load required libraries. Check your internet connection.</div>
+        </div>`;
+    };
+    document.head.appendChild(fallback);
   };
   document.head.appendChild(script);
 });
