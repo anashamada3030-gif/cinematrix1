@@ -50,10 +50,56 @@ function matchCat(m, cat) {
 let actorRows    = [];
 let actorsLoaded = false;
 
+// ── In-memory store when data is passed from main thread (Supabase) ──────────
+let inMemoryMovies = null;  // array of rows if loaded from Supabase
+
 // ── Movies: stream-search, no storage ─────────────────────────────────────────
 // Streams the CSV once per search request, collects matches, posts results.
 // If the query is empty we still stream but stop after collecting `limit` rows
 // sorted by vote_average — we keep a small top-N heap instead of all rows.
+// ── In-memory search (used when Supabase data is pre-loaded) ─────────────────
+function searchInMemory(rows, query, mediaType, genre, minRating, limit, requestId) {
+  const q = (query || '').toLowerCase().trim();
+  limit = limit || 60;
+  const minR = parseFloat(minRating) || 0;
+  let results = [];
+
+  for (const row of rows) {
+    const mt = (row.media_type || 'movie').toLowerCase();
+    if (mediaType && mediaType !== 'all' && mt !== mediaType) continue;
+    if (minR > 0 && parseFloat(row.vote_average) < minR) continue;
+    if (genre && genre !== 'all') {
+      const g = (row.genres || '').toLowerCase();
+      if (!g.includes(genre.toLowerCase())) continue;
+    }
+    if (q) {
+      const title = (row.title || row.name || '').toLowerCase();
+      const orig  = (row.original_title || '').toLowerCase();
+      const cast  = (row.cast || '').toLowerCase();
+      const kw    = (row.keywords || '').toLowerCase();
+      if (!title.includes(q) && !orig.includes(q) && !cast.includes(q) && !kw.includes(q)) continue;
+    }
+    results.push(compact(row));
+    if (results.length >= limit * 4) break; // collect more for sorting
+  }
+
+  // Sort: exact title match first, then by vote_average
+  if (q) {
+    results.sort((a, b) => {
+      const aTitle = (a.title || '').toLowerCase();
+      const bTitle = (b.title || '').toLowerCase();
+      const aExact = aTitle === q ? 2 : aTitle.startsWith(q) ? 1 : 0;
+      const bExact = bTitle === q ? 2 : bTitle.startsWith(q) ? 1 : 0;
+      if (bExact !== aExact) return bExact - aExact;
+      return (b.vote_average || 0) - (a.vote_average || 0);
+    });
+  } else {
+    results.sort((a, b) => (b.vote_average || 0) - (a.vote_average || 0));
+  }
+
+  self.postMessage({ type: 'SEARCH_RESULTS', results: results.slice(0, limit), requestId });
+}
+
 function streamSearch(url, query, mediaType, genre, minRating, limit, requestId) {
   const q    = (query || '').toLowerCase().trim();
   limit      = limit || 60;
@@ -179,10 +225,34 @@ self.onmessage = function(e) {
       break;
     }
 
-    // ── SEARCH: stream-search on demand, no preloaded index ──────────────────
+    // ── SEARCH: use in-memory Supabase data if available, else stream CSV ───────
     case 'SEARCH': {
-      const url = data.baseUrl + 'static_movies_series.csv';
-      streamSearch(url, data.query, data.mediaType, data.genre, data.minRating, data.limit, data.requestId);
+      if (inMemoryMovies) {
+        searchInMemory(inMemoryMovies, data.query, data.mediaType, data.genre, data.minRating, data.limit, data.requestId);
+      } else {
+        const url = data.baseUrl + 'static_movies_series.csv';
+        streamSearch(url, data.query, data.mediaType, data.genre, data.minRating, data.limit, data.requestId);
+      }
+      break;
+    }
+
+    // ── LOAD_DATA: receive pre-loaded Supabase rows from main thread ──────────
+    case 'LOAD_DATA': {
+      if (data.movies && Array.isArray(data.movies)) {
+        inMemoryMovies = data.movies;
+      }
+      if (data.actors && Array.isArray(data.actors)) {
+        actorRows = data.actors.map(r => ({
+          id: r.id || '',
+          name: r.name || '',
+          bio: (r.bio || '').slice(0, 300),
+          poster_url: r.poster_url || '',
+          known_for: r.known_for || ''
+        }));
+        actorsLoaded = true;
+        self.postMessage({ type: 'ACTORS_READY', count: actorRows.length });
+      }
+      self.postMessage({ type: 'MOVIES_READY', count: inMemoryMovies ? inMemoryMovies.length : 0 });
       break;
     }
 
