@@ -2133,22 +2133,38 @@ let _phase2Promise = null;
 const csvDir = 'csv_output/';
 
 // ── Fetch helper: tries Supabase REST first, falls back to CSV ────────────────
-async function fetchTable(supabaseTable, csvFile, limit = 5000) {
+async function fetchTable(supabaseTable, csvFile, limit = 50000) {
   if (window.USE_REST_API) {
     try {
-      const resp = await fetch(
-        `${SUPABASE_URL}/rest/v1/${supabaseTable}?select=*&limit=${limit}`,
-        { headers: { 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${SUPABASE_KEY}` } }
+      const PAGE = 1000;
+      const headers = { 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${SUPABASE_KEY}`, 'Prefer': 'count=exact' };
+      const first = await fetch(
+        `${SUPABASE_URL}/rest/v1/${supabaseTable}?select=*&limit=${PAGE}&offset=0`,
+        { headers }
       );
-      if (resp.ok) {
-        const data = await resp.json();
-        if (Array.isArray(data) && data.length > 0) {
-          console.log(`✅ Supabase: ${supabaseTable} (${data.length} rows)`);
-          return data;
+      if (!first.ok) throw new Error(`HTTP ${first.status}`);
+      const firstData = await first.json();
+      if (!Array.isArray(firstData)) throw new Error('unexpected response');
+      const range = first.headers.get('content-range') || '';
+      const total = parseInt(range.split('/')[1]) || firstData.length;
+      const pages = Math.ceil(Math.min(total, limit) / PAGE);
+      let all = firstData;
+      if (pages > 1) {
+        const fetches = [];
+        for (let p = 1; p < pages; p++) {
+          fetches.push(
+            fetch(`${SUPABASE_URL}/rest/v1/${supabaseTable}?select=*&limit=${PAGE}&offset=${p * PAGE}`, { headers })
+              .then(r => r.ok ? r.json() : []).catch(() => [])
+          );
         }
+        const rest = await Promise.all(fetches);
+        all = all.concat(...rest);
       }
-    } catch(e) { /* fall through to CSV */ }
-    console.warn(`⚠️ Supabase ${supabaseTable} unavailable, using CSV fallback`);
+      console.log(`✅ Supabase: ${supabaseTable} (${all.length} rows)`);
+      return all;
+    } catch(e) {
+      console.warn(`⚠️ Supabase ${supabaseTable} failed (${e.message}), using CSV fallback`);
+    }
   }
   return parseCSV(csvDir + csvFile);
 }
