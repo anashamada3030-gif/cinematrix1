@@ -1176,21 +1176,35 @@ $('awards-content').innerHTML = years.map(y => `
 let selectedYear = '2026';
 
 function initYear() {
-// Lazy-load movies_by_year on first visit
-if (!DATA.moviesByYear.length) {
-  const content = $('year-content');
-  if (content) content.innerHTML = '<div style="padding:40px;text-align:center;color:#8892a8;font-size:13px">Loading…</div>';
-  fetchTable('movies_by_year', 'static_movies_by_year.csv').then(rows => {
-    DATA.moviesByYear = rows;
-    renderYear();
-  });
-  // Build year nav while data loads
-}
+// Build year nav buttons
 const years = [];
 for (let y = 2026; y >= 2010; y--) years.push(String(y));
 $('year-nav').innerHTML = years.map(y =>
 `<button class="year-btn ${y===selectedYear?'active':''}" onclick="setYear('${y}',this)">${y}</button>`
 ).join('');
+
+// Lazy-load movies_by_year on first visit
+if (!DATA.moviesByYear.length) {
+  const content = $('year-content');
+  if (content) content.innerHTML = '<div style="padding:40px;text-align:center;color:#8892a8;font-size:13px">⏳ Loading movies…</div>';
+  fetchTable('movies_by_year', 'static_movies_by_year.csv').then(rows => {
+    DATA.moviesByYear = rows.length ? rows : [];
+    if (!DATA.moviesByYear.length) {
+      // CSV may have failed; try direct CSV parse as last resort
+      return parseCSV('csv_output/static_movies_by_year.csv').then(r => {
+        DATA.moviesByYear = r;
+        renderYear();
+      });
+    }
+    renderYear();
+  }).catch(() => {
+    const content = $('year-content');
+    if (content) content.innerHTML = '<div class="empty-state"><div class="empty-state-icon">⚠️</div><div>Failed to load data</div></div>';
+  });
+  // Don't call renderYear() yet — data is still loading
+  return;
+}
+// Data already loaded — render immediately
 renderYear();
 }
 
@@ -1402,17 +1416,26 @@ if (window.USE_REST_API) {
   if (searchMinRating)   url += `&vote_average=gte.${searchMinRating}`;
   try {
     const resp = await fetch(url, { headers });
-    if (resp.ok) searchRows = await resp.json();
+    if (resp.ok) {
+      const data = await resp.json();
+      if (Array.isArray(data)) searchRows = data;
+    }
   } catch(e) { console.warn('Search query failed, falling back to worker:', e); }
 }
 
 // Fallback: search worker (CSV streaming)
 if (!searchRows.length && _worker) {
+  if (!_workerReady) {
+    results.innerHTML = `<div style="padding:40px;text-align:center;color:var(--text2);font-size:13px">⏳ Building search index, please wait…</div>`;
+    return;
+  }
   searchRows = await _wSearch(q, mType, searchGenre, searchMinRating);
 }
 
 if (!searchRows.length) {
-  results.innerHTML = `<div style="padding:40px;text-align:center;color:var(--text2)">No results for "<b>${safe(q)}</b>"</div>`;
+  results.innerHTML = q
+    ? `<div style="padding:40px;text-align:center;color:var(--text2)">No results for "<b>${safe(q)}</b>"</div>`
+    : `<div style="padding:40px;text-align:center;color:var(--text2);font-size:13px">Start typing to search movies, series or actors…</div>`;
   return;
 }
 
