@@ -1406,7 +1406,10 @@ if (window.USE_REST_API) {
   } catch(e) { console.warn('Search query failed, falling back to worker:', e); }
 }
 
-// No CSV fallback — Supabase is the only data source
+// Fallback: search worker (CSV streaming)
+if (!searchRows.length && _worker) {
+  searchRows = await _wSearch(q, mType, searchGenre, searchMinRating);
+}
 
 if (!searchRows.length) {
   results.innerHTML = `<div style="padding:40px;text-align:center;color:var(--text2)">No results for "<b>${safe(q)}</b>"</div>`;
@@ -2137,39 +2140,41 @@ let _phase2Promise = null;
 
 const csvDir = 'csv_output/';
 
-// ── Fetch helper: always uses Supabase REST ──────────────────────────────────
-async function fetchTable(supabaseTable, _unused, limit = 50000) {
-  try {
-    const PAGE = 1000;
-    const headers = { 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${SUPABASE_KEY}`, 'Prefer': 'count=exact' };
-    const first = await fetch(
-      `${SUPABASE_URL}/rest/v1/${supabaseTable}?select=*&limit=${PAGE}&offset=0`,
-      { headers }
-    );
-    if (!first.ok) throw new Error(`HTTP ${first.status}`);
-    const firstData = await first.json();
-    if (!Array.isArray(firstData)) throw new Error('unexpected response');
-    const range = first.headers.get('content-range') || '';
-    const total = parseInt(range.split('/')[1]) || firstData.length;
-    const pages = Math.ceil(Math.min(total, limit) / PAGE);
-    let all = firstData;
-    if (pages > 1) {
-      const fetches = [];
-      for (let p = 1; p < pages; p++) {
-        fetches.push(
-          fetch(`${SUPABASE_URL}/rest/v1/${supabaseTable}?select=*&limit=${PAGE}&offset=${p * PAGE}`, { headers })
-            .then(r => r.ok ? r.json() : []).catch(() => [])
-        );
+// ── Fetch helper: tries Supabase REST first, falls back to CSV ────────────────
+async function fetchTable(supabaseTable, csvFile, limit = 50000) {
+  if (window.USE_REST_API) {
+    try {
+      const PAGE = 1000;
+      const headers = { 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${SUPABASE_KEY}`, 'Prefer': 'count=exact' };
+      const first = await fetch(
+        `${SUPABASE_URL}/rest/v1/${supabaseTable}?select=*&limit=${PAGE}&offset=0`,
+        { headers }
+      );
+      if (!first.ok) throw new Error(`HTTP ${first.status}`);
+      const firstData = await first.json();
+      if (!Array.isArray(firstData)) throw new Error('unexpected response');
+      const range = first.headers.get('content-range') || '';
+      const total = parseInt(range.split('/')[1]) || firstData.length;
+      const pages = Math.ceil(Math.min(total, limit) / PAGE);
+      let all = firstData;
+      if (pages > 1) {
+        const fetches = [];
+        for (let p = 1; p < pages; p++) {
+          fetches.push(
+            fetch(`${SUPABASE_URL}/rest/v1/${supabaseTable}?select=*&limit=${PAGE}&offset=${p * PAGE}`, { headers })
+              .then(r => r.ok ? r.json() : []).catch(() => [])
+          );
+        }
+        const rest = await Promise.all(fetches);
+        all = all.concat(...rest);
       }
-      const rest = await Promise.all(fetches);
-      all = all.concat(...rest);
+      console.log(`✅ Supabase: ${supabaseTable} (${all.length} rows)`);
+      return all;
+    } catch(e) {
+      console.warn(`⚠️ Supabase ${supabaseTable} failed (${e.message}), using CSV fallback`);
     }
-    console.log(`✅ Supabase: ${supabaseTable} (${all.length} rows)`);
-    return all;
-  } catch(e) {
-    console.error(`❌ Supabase ${supabaseTable} failed: ${e.message}`);
-    return [];
   }
+  return parseCSV(csvDir + csvFile);
 }
 
 async function loadAllData() {
@@ -2190,12 +2195,12 @@ async function loadAllData() {
     fetchTable('mood_recommendations','recommendation_mood.csv'),         // ~744 rows
     Promise.resolve([]),   // recommendation_pool — loaded on demand when Recommend page opens
     Promise.resolve([]),   // cinema_galaxy — loaded in its own iframe, not needed here
-    fetchTable('cinema_world'),                 // world map — all 137 countries from Supabase
+    parseCSV(csvDir+'static_cinema_world.csv'), // world map — CSV has full 137 countries
     fetchTable('egypt_cinemas',       'egypt_cinema_20260508_1117.csv'),  // Egypt section
     fetchTable('genre_frequency',     'analytics_genre_frequency.csv'),   // 27 rows
     fetchTable('genre_cooccurrence',  'analytics_genre_cooccurrence.csv'),// 27 rows
     Promise.resolve([]),   // point_cloud — loaded on demand when Analytics page opens
-    Promise.resolve([])  // egypt pivot replaced by Day column in egypt_cinemas table
+    parseCSV(csvDir+'egypt_cinema_pivoted_days.csv')  // pivot CSV
   ]);
 
 // actors, moviesByYear deferred too — load after UI is visible
@@ -2212,44 +2217,79 @@ if (seedSeen.has(k)) return false;
 seedSeen.add(k); return true;
 });
 
-  // ── Build egyptMap directly from egypt_cinemas Supabase table ──────────────
-  // Table columns: Title, Description, Poster URL, Day, Cinema Name, Showtime
-  const egyptMap = {};
-  function getCol(row, ...candidates) {
-    const keys = Object.keys(row);
-    for (const cand of candidates) {
-      if (row[cand] !== undefined) return (row[cand] || '').trim();
-      const found = keys.find(k => k.toLowerCase() === cand.toLowerCase());
-      if (found && row[found] !== undefined) return (row[found] || '').trim();
-      const partial = keys.find(k => k.toLowerCase().includes(cand.toLowerCase()));
-      if (partial && row[partial] !== undefined) return (row[partial] || '').trim();
-    }
-    return '';
+  // ── Step 1: Build days map from pivoted CSV (Title → { dayLabel → Set of cinemas }) ──
+  // Columns: Title | Cinema Name | Friday 08 | Saturday 09 | Sunday 10 | Monday 11 | Tuesday 12
+  const DAY_ORDER = ['friday','saturday','sunday','monday','tuesday','wednesday','thursday'];
+  const pivotDaysMap = {}; // { title: { dayLabel: Set<cinemaName> } }
+
+  if (egyptPivotRaw.length) {
+    const pivotKeys = Object.keys(egyptPivotRaw[0]);
+    // Day columns = everything except Title and Cinema Name
+    const dayCols = pivotKeys
+      .filter(k => !['title','cinema name'].includes(k.toLowerCase().trim()))
+      .sort((a, b) => {
+        const ia = DAY_ORDER.findIndex(d => a.toLowerCase().startsWith(d));
+        const ib = DAY_ORDER.findIndex(d => b.toLowerCase().startsWith(d));
+        return (ia === -1 ? 99 : ia) - (ib === -1 ? 99 : ib);
+      });
+
+    egyptPivotRaw.forEach(row => {
+      const titleKey = pivotKeys.find(k => k.toLowerCase().trim() === 'title');
+      const cinemaKey = pivotKeys.find(k => k.toLowerCase().trim() === 'cinema name');
+      const title  = (row[titleKey]  || '').trim();
+      const cinema = (row[cinemaKey] || '').trim();
+      if (!title || !cinema) return;
+      if (!pivotDaysMap[title]) pivotDaysMap[title] = {};
+      dayCols.forEach(col => {
+        if ((row[col] || '').trim()) {          // non-empty = this cinema shows on this day
+          if (!pivotDaysMap[title][col]) pivotDaysMap[title][col] = new Set();
+          pivotDaysMap[title][col].add(cinema);
+        }
+      });
+    });
   }
 
-  const DAY_ORDER = ['friday','saturday','sunday','monday','tuesday','wednesday','thursday'];
-  egyptRaw.forEach(row => {
-    const title  = getCol(row, 'Title', 'title', 'Movie', 'movie');
-    const cinema = getCol(row, 'Cinema Name', 'Cinema', 'cinema', 'cinema_name', 'Theater', 'theatre', 'Venue');
-    const time   = getCol(row, 'Showtime', 'Time', 'time', 'showtime', 'show_time', 'ShowTime', 'Start');
-    const day    = getCol(row, 'Day', 'day');
-    if (!title || !cinema || !day) return;
+// ── Step 2: Build egyptMap from old CSV (Title, Description, Poster, Cinema, Showtime) ──
+// Days come exclusively from the pivoted CSV above.
+const egyptMap = {};
+function getCol(row, ...candidates) {
+const keys = Object.keys(row);
+for (const cand of candidates) {
+if (row[cand] !== undefined) return (row[cand] || '').trim();
+const found = keys.find(k => k.toLowerCase() === cand.toLowerCase());
+if (found && row[found] !== undefined) return (row[found] || '').trim();
+const partial = keys.find(k => k.toLowerCase().includes(cand.toLowerCase()));
+if (partial && row[partial] !== undefined) return (row[partial] || '').trim();
+}
+return '';
+}
 
-    if (!egyptMap[title]) egyptMap[title] = {
-      title,
-      description: getCol(row, 'Description', 'description', 'Overview', 'overview', 'Plot', 'plot'),
-      poster_url:  getCol(row, 'Poster URL', 'poster_url', 'Poster', 'poster', 'Image', 'image'),
-      backdrop_url: getCol(row, 'Backdrop URL', 'backdrop_url', 'Backdrop', 'backdrop', 'backdrop_path', 'Fanart', 'fanart'),
-      days: {}
-    };
+egyptRaw.forEach(row => {
+const title  = getCol(row, 'Title', 'title', 'Movie', 'movie');
+const cinema = getCol(row, 'Cinema Name', 'Cinema', 'cinema', 'cinema_name', 'Theater', 'theatre', 'Venue');
+const time   = getCol(row, 'Showtime', 'Time', 'time', 'showtime', 'show_time', 'ShowTime', 'Start');
+if (!title || !cinema) return;
 
-    if (!egyptMap[title].days[day]) egyptMap[title].days[day] = {};
-    if (!egyptMap[title].days[day][cinema]) egyptMap[title].days[day][cinema] = [];
-    if (time && !egyptMap[title].days[day][cinema].includes(time))
-      egyptMap[title].days[day][cinema].push(time);
-  });
+if (!egyptMap[title]) egyptMap[title] = {
+title,
+description: getCol(row, 'Description', 'description', 'Overview', 'overview', 'Plot', 'plot'),
+poster_url:  getCol(row, 'Poster URL', 'poster_url', 'Poster', 'poster', 'Image', 'image'),
+backdrop_url: getCol(row, 'Backdrop URL', 'backdrop_url', 'Backdrop', 'backdrop', 'backdrop_path', 'Fanart', 'fanart'),
+days: {}
+};
 
-  DATA.egyptCinemas = Object.values(egyptMap);
+// ── Days: read ONLY from pivotDaysMap ──
+const titleDays = pivotDaysMap[title] || {};
+Object.entries(titleDays).forEach(([dayLabel, cinemaSet]) => {
+if (!cinemaSet.has(cinema)) return;           // this cinema not listed for this day
+if (!egyptMap[title].days[dayLabel]) egyptMap[title].days[dayLabel] = {};
+if (!egyptMap[title].days[dayLabel][cinema])  egyptMap[title].days[dayLabel][cinema] = [];
+if (time && !egyptMap[title].days[dayLabel][cinema].includes(time))
+egyptMap[title].days[dayLabel][cinema].push(time);
+});
+});
+
+DATA.egyptCinemas = Object.values(egyptMap);
 
 // Parse co-occurrence matrix
 if (coocRaw.length) {
@@ -2261,11 +2301,14 @@ DATA.coocMatrix = coocRaw.map(row => cols.map(c => parseInt(row[c])||0));
 hideLoadingOverlay();
 initAll();
 
-// ══ PHASE 2 — actors injected from Supabase; worker used for actor search ════
+// ══ PHASE 2 — heavy CSVs live in the Worker; never loaded in main thread ═════
+// static_movies_series.csv (25k rows) and static_actors.csv are streamed
+// and searched entirely off the main thread.  Only ≤60 result rows ever
+// reach here, keeping JS heap ≤ 10 MB.
 _phase2Done = false;
 _workerReady = false;
-_startSearchWorker();
-// Inject actors from Supabase into worker
+_startSearchWorker(csvDir);
+// If actors already loaded from Supabase, inject them into worker immediately
 if (DATA.actors && DATA.actors.length > 0) {
   setTimeout(() => {
     if (_worker) {
@@ -2273,6 +2316,7 @@ if (DATA.actors && DATA.actors.length > 0) {
     }
   }, 100);
 }
+// movies_series is never pre-loaded; worker always streams CSV for categories/browse
 }
 
 // ── Worker bootstrap — streams heavy CSVs off-thread ─────────────────────────
@@ -2284,8 +2328,7 @@ let _workerReady  = false;
 let _workerReqId  = 0;
 const _workerPending = {};
 
-function _startSearchWorker() {
-  const base = '';
+function _startSearchWorker(base) {
   try { _worker = new Worker('search-worker.js'); }
   catch(e) { console.warn('[CineMatrix] Worker unavailable:', e); return; }
 
@@ -2311,8 +2354,9 @@ function _startSearchWorker() {
   };
   _worker.onerror = e => console.warn('[CineMatrix] Worker error', e);
 
-  // Movies searched directly via Supabase; actors injected via LOAD_DATA after init
-  self._workerReady = true;
+  updateLoadingBadge('Indexing library…');
+  _worker.postMessage({ type: 'LOAD_MOVIES', data: { url: base + 'static_movies_series.csv' } });
+  _worker.postMessage({ type: 'LOAD_ACTORS', data: { url: base + 'static_actors.csv' } });
 }
 
 function _workerSend(msg) {
@@ -2327,42 +2371,17 @@ function _workerSend(msg) {
 }
 
 function _wSearch(q, mediaType, genre, minRating) {
-  return _workerSend({ type: 'SEARCH', data: { query: q, mediaType, genre, minRating, limit: 60 } })
+  return _workerSend({ type: 'SEARCH', data: { query: q, mediaType, genre, minRating, limit: 60, baseUrl: csvDir } })
     .then(r => (r && r.results) ? r.results : []);
 }
 function _wSearchActors(q) {
   return _workerSend({ type: 'SEARCH_ACTORS', data: { query: q } })
     .then(r => (r && r.results) ? r.results : []);
 }
-async function _loadCatFromSupabase(cat, media, offset, limit=30) {
-  const headers = { 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${SUPABASE_KEY}`, 'Prefer': 'count=exact' };
-  const mFilter = media === 'tv' ? '&media_type=eq.tv' : '&media_type=eq.movie';
-  let catFilter = '';
-  switch(cat) {
-    case 'korean':      catFilter = '&original_language=eq.ko'; break;
-    case 'anime':       catFilter = '&original_language=eq.ja&genres=ilike.*animation*'; break;
-    case 'egyptian':    catFilter = '&original_language=eq.ar'; break;
-    case 'middle_east': catFilter = '&original_language=in.(fa,tr,he,ur)'; break;
-    case 'global':      catFilter = '&original_language=in.(en,fr,es,de,it,pt,ru,zh,hi)'; break;
-    case 'musical':     catFilter = '&genres=ilike.*music*'; break;
-    default:            catFilter = ''; break;
-  }
-  try {
-    const url = `${SUPABASE_URL}/rest/v1/movies_series?select=id,title,original_title,media_type,vote_average,release_date,poster_url,genres,cast,overview,trailer_url,backdrop_url${mFilter}${catFilter}&order=vote_average.desc&limit=${limit}&offset=${offset}`;
-    const resp = await fetch(url, { headers });
-    if (!resp.ok) return { rows: [], total: 0 };
-    const range = resp.headers.get('content-range') || '';
-    const total = parseInt(range.split('/')[1]) || 0;
-    const rows = await resp.json();
-    return { rows: Array.isArray(rows) ? rows : [], total };
-  } catch(e) {
-    console.error('Category load failed:', e.message);
-    return { rows: [], total: 0 };
-  }
-}
-
 function _wLoadCat(cat, media, offset) {
-  return _loadCatFromSupabase(cat, media, offset || 0);
+  const url = csvDir + (media === 'tv' ? 'mega_series.csv' : 'mega_movies.csv');
+  return _workerSend({ type: offset > 0 ? 'CAT_MORE' : 'LOAD_CAT', data: { cat, media, offset, limit: 30, url } })
+    .then(r => r || { rows: [], total: 0 });
 }
 
 // Small badge shown in top-right area while phase 2 loads
@@ -2578,34 +2597,49 @@ document.getElementById('wm-map').innerHTML =
 });
 }
 
-window.addEventListener('DOMContentLoaded', async () => {
-  // Connect to Supabase — all data comes from Supabase, no CSV fallback
-  try {
-    const probe = await fetch(
-      `${SUPABASE_URL}/rest/v1/new_releases?select=id&limit=1`,
-      { headers: { 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${SUPABASE_KEY}` } }
-    );
-    if (probe.ok) {
-      window.USE_REST_API = true;
-      console.log('✅ Supabase connected');
-    } else {
-      const errText = await probe.text().catch(()=>'');
-      console.error('❌ Supabase probe returned', probe.status, errText);
+window.addEventListener('DOMContentLoaded', () => {
+  // Load PapaParse (needed for CSV fallback), then silently test Supabase
+  const script = document.createElement('script');
+  script.src = 'https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js';
+  script.onload = async () => {
+    // Silently probe Supabase — check HTTP 200 only (tables may be empty but connection valid)
+    try {
+      const probe = await fetch(
+        `${SUPABASE_URL}/rest/v1/new_releases?select=id&limit=1`,
+        { headers: { 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${SUPABASE_KEY}` } }
+      );
+      if (probe.ok) {
+        window.USE_REST_API = true;
+        console.log('✅ Supabase connected — loading data from Supabase');
+      } else {
+        const errText = await probe.text().catch(()=>'');
+        console.warn('⚠️ Supabase probe returned', probe.status, errText);
+      }
+    } catch(e) {
+      console.warn('⚠️ Supabase probe failed:', e.message);
     }
-  } catch(e) {
-    console.error('❌ Supabase probe failed:', e.message);
-  }
-  if (!window.USE_REST_API) {
-    hideLoadingOverlay();
-    $('main').innerHTML = `
-      <div style="padding:60px 28px;text-align:center;color:var(--text2)">
-        <div style="font-size:36px;margin-bottom:16px">⚠️</div>
-        <div style="font-size:16px;color:var(--text);margin-bottom:8px">Database Error</div>
-        <div style="font-size:12px">Could not connect to Supabase. Check your internet connection and try again.</div>
-      </div>`;
-    return;
-  }
-  loadAllData();
+    if (!window.USE_REST_API) {
+      console.log('ℹ️ Supabase not available — loading data from CSV files');
+    }
+    loadAllData();
+  };
+  script.onerror = () => {
+    // PapaParse CDN failed — try loading from a mirror
+    const fallback = document.createElement('script');
+    fallback.src = 'https://unpkg.com/papaparse@5.4.1/papaparse.min.js';
+    fallback.onload = () => loadAllData();
+    fallback.onerror = () => {
+      hideLoadingOverlay();
+      $('main').innerHTML = `
+        <div style="padding:60px 28px;text-align:center;color:var(--text2)">
+          <div style="font-size:36px;margin-bottom:16px">⚠️</div>
+          <div style="font-size:16px;color:var(--text);margin-bottom:8px">Network Error</div>
+          <div style="font-size:12px">Could not load required libraries. Check your internet connection.</div>
+        </div>`;
+    };
+    document.head.appendChild(fallback);
+  };
+  document.head.appendChild(script);
 });
 </script>
 <script src="timemachine3d.js"></script>
