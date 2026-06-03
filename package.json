@@ -2,9 +2,13 @@
   "name": "cinematrix1",
   "version": "1.0.0",
   "description": "CinaMatrix - Interactive Cinema Analytics & Visualizations",
-  "main": "indexv5.html",
+  "main": "index.html",
   "scripts": {
-    "dev": "python news_proxy.py & python -m http.server 8080"
+    "dev": "python migrate_to_supabase.py & python -m http.server 8080",
+    "migrate": "python migrate_to_supabase.py"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.38.0"
   },
   "keywords": ["cinema", "analytics", "3d-visualization"],
   "author": "",

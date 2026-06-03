@@ -1975,82 +1975,120 @@ function renderCinemaCards(cinemas) {
 }
 
 // ══════════════════════════════════════════════════════════
-// CSV LOADER (PapaParse)
+// SUPABASE DATA LOADER
 // ══════════════════════════════════════════════════════════
+// Define Supabase credentials globally
+const SUPABASE_URL = 'https://dkk2wxcydwdmrqwygkdn.supabase.co';
+const SUPABASE_KEY = 'sb_publishable_LXZC0Ax3iTqkvl8MgCAACg_N6vyXuhp';
+
 const DATA = {
   newReleases:[],topRated:[],reviews:[],moviesSeries:[],awards:[],moviesByYear:[],
   actors:[],moodData:[],recPool:[],cinemaGalaxy:[],cinemaWorld:[],egyptCinemas:[],
   genreFreq:[],coocGenres:[],coocMatrix:[],pointCloud:[]
 };
 
-function parseCSV(url) {
-  return new Promise((resolve) => {
-    Papa.parse(url, {
-      download:true, header:true, skipEmptyLines:true,
-      complete: r => resolve(r.data),
-      error: () => resolve([])
+async function initSupabase() {
+  console.log('🔌 Initializing Supabase client...');
+  console.log('window.supabase:', window.supabase);
+  
+  // Try standard import pattern
+  try {
+    if (window.supabase && window.supabase.createClient) {
+      supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+    } else if (window.supabase) {
+      // UMD might expose it directly as a function
+      supabase = window.supabase(SUPABASE_URL, SUPABASE_KEY);
+    } else {
+      throw new Error('Supabase not found in window');
+    }
+    
+    // Verify the client has the expected methods
+    if (!supabase || typeof supabase.from !== 'function') {
+      console.error('❌ Supabase client missing .from() method');
+      console.log('supabase object:', supabase);
+      throw new Error('Invalid supabase client object');
+    }
+    
+    console.log('✅ Supabase client initialized successfully');
+    return supabase;
+  } catch (err) {
+    console.error('❌ Failed to initialize Supabase:', err);
+    throw err;
+  }
+}
+
+async function loadFromSupabase(tableName) {
+  try {
+    console.log(`⏳ Loading ${tableName}...`);
+    
+    // Use REST API directly (most reliable for plain HTML)
+    const url = `${SUPABASE_URL}/rest/v1/${tableName}?select=*`;
+    const response = await fetch(url, {
+      headers: {
+        'apikey': SUPABASE_KEY,
+        'Authorization': `Bearer ${SUPABASE_KEY}`
+      }
     });
-  });
+    
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+    }
+    
+    const data = await response.json();
+    console.log(`✅ ${tableName}: ${(data || []).length} rows`);
+    return data || [];
+  } catch (err) {
+    console.error(`❌ Error loading ${tableName}:`, err);
+    return []; // Return empty array to allow other tables to load
+  }
 }
 
 async function loadAllData() {
   showLoadingOverlay('Loading cinema data…');
-  const csvDir = 'csv_output/';
+  
   const [
     newReleases, topRated, reviews, moviesSeries, awards, moviesByYear,
     actors, moodData, recPool, cinemaGalaxy, cinemaWorld, egyptRaw,
-    genreFreq, coocRaw, pointCloud, egyptPivotRaw
+    genreFreq, coocRaw, pointCloud
   ] = await Promise.all([
-    parseCSV(csvDir+'dynamic_new_releases.csv'),
-    parseCSV(csvDir+'dynamic_top_rated.csv'),
-    parseCSV(csvDir+'dynamic_reviews.csv'),
-    parseCSV(csvDir+'static_movies_series.csv'),
-    parseCSV(csvDir+'static_awards.csv'),
-    parseCSV(csvDir+'static_movies_by_year.csv'),
-    parseCSV(csvDir+'static_actors.csv'),
-    parseCSV(csvDir+'recommendation_mood.csv'),
-    parseCSV(csvDir+'recommendation_pool.csv'),
-    parseCSV(csvDir+'static_cinema_galaxy.csv'),
-    parseCSV(csvDir+'static_cinema_world.csv'),
-    parseCSV(csvDir+'egypt_cinema_20260508_1117.csv'),
-    parseCSV(csvDir+'analytics_genre_frequency.csv'),
-    parseCSV(csvDir+'analytics_genre_cooccurrence.csv'),
-    parseCSV(csvDir+'analytics_point_cloud.csv'),
-    parseCSV(csvDir+'egypt_cinema_pivoted_days.csv')
+    loadFromSupabase('new_releases'),
+    loadFromSupabase('top_rated'),
+    loadFromSupabase('reviews'),
+    loadFromSupabase('movies_series'),
+    loadFromSupabase('awards'),
+    loadFromSupabase('movies_by_year'),
+    loadFromSupabase('actors'),
+    loadFromSupabase('mood_recommendations'),
+    loadFromSupabase('recommendation_pool'),
+    loadFromSupabase('cinema_galaxy'),
+    loadFromSupabase('cinema_world'),
+    loadFromSupabase('egypt_cinemas'),
+    loadFromSupabase('genre_frequency'),
+    loadFromSupabase('genre_cooccurrence'),
+    loadFromSupabase('point_cloud')
   ]);
 
   Object.assign(DATA, { newReleases, topRated, reviews, moviesSeries, awards, moviesByYear,
     actors, moodData, recPool, cinemaGalaxy, cinemaWorld, genreFreq, pointCloud });
 
-  // ── Step 1: Build days map from pivoted CSV (Title → { dayLabel → Set of cinemas }) ──
+  // ── Build Egypt Cinema data from Supabase ──
   // Columns: Title | Cinema Name | Friday 08 | Saturday 09 | Sunday 10 | Monday 11 | Tuesday 12
   const DAY_ORDER = ['friday','saturday','sunday','monday','tuesday','wednesday','thursday'];
   const pivotDaysMap = {}; // { title: { dayLabel: Set<cinemaName> } }
 
-  if (egyptPivotRaw.length) {
-    const pivotKeys = Object.keys(egyptPivotRaw[0]);
-    // Day columns = everything except Title and Cinema Name
-    const dayCols = pivotKeys
-      .filter(k => !['title','cinema name'].includes(k.toLowerCase().trim()))
-      .sort((a, b) => {
-        const ia = DAY_ORDER.findIndex(d => a.toLowerCase().startsWith(d));
-        const ib = DAY_ORDER.findIndex(d => b.toLowerCase().startsWith(d));
-        return (ia === -1 ? 99 : ia) - (ib === -1 ? 99 : ib);
-      });
-
-    egyptPivotRaw.forEach(row => {
-      const titleKey = pivotKeys.find(k => k.toLowerCase().trim() === 'title');
-      const cinemaKey = pivotKeys.find(k => k.toLowerCase().trim() === 'cinema name');
-      const title  = (row[titleKey]  || '').trim();
-      const cinema = (row[cinemaKey] || '').trim();
+  // Build from Supabase data (egyptRaw contains all cinema showtime data)
+  if (egyptRaw && egyptRaw.length) {
+    const DAY_ORDER = ['friday','saturday','sunday','monday','tuesday','wednesday','thursday'];
+    
+    egyptRaw.forEach(row => {
+      const title  = (row.title || '').trim();
+      const cinema = (row.cinema_name || row.cinema || '').trim();
+      const dayLabel = (row.day || '').trim().toLowerCase();
+      
       if (!title || !cinema) return;
       if (!pivotDaysMap[title]) pivotDaysMap[title] = {};
-      dayCols.forEach(col => {
-        if ((row[col] || '').trim()) {          // non-empty = this cinema shows on this day
-          if (!pivotDaysMap[title][col]) pivotDaysMap[title][col] = new Set();
-          pivotDaysMap[title][col].add(cinema);
-        }
-      });
+      if (!pivotDaysMap[title][dayLabel]) pivotDaysMap[title][dayLabel] = new Set();
+      pivotDaysMap[title][dayLabel].add(cinema);
     });
   }
 
@@ -2136,7 +2174,7 @@ function initAll() {
 }
 
 // ══════════════════════════════════════════════════════════
-// BOOTSTRAP — load PapaParse → then all CSVs
+// BOOTSTRAP — Load Supabase client → then all data
 // ══════════════════════════════════════════════════════════
 // Fallback — timemachine3d.js will override this once DATA is ready
 function setTlMode(mode, el) {
@@ -2144,8 +2182,61 @@ function setTlMode(mode, el) {
   if (el) el.classList.add('active');
 }
 
-// ══════════════════════════════════════════════════════════
-// WORLD HEATMAP  —  driven by DATA.cinemaWorld (static_cinema_world.csv)
+window.addEventListener('DOMContentLoaded', () => {
+  console.log('🎬 CineMatrix: Loading Supabase JS library...');
+  const script = document.createElement('script');
+  script.src = 'https://esm.sh/v135/@supabase/supabase-js@2.39.0/dist/module.mjs';
+  script.type = 'module';
+  script.onload = async () => {
+    console.log('✅ Supabase JS library loaded');
+    console.log('🔄 Starting data load from Supabase...');
+    try {
+      // ESM imports work, but we loaded it globally - need different approach
+      // Use alternative: fetch via REST API instead of JS client
+      const response = await fetch(`${SUPABASE_URL}/rest/v1/new_releases?select=*`, {
+        headers: {
+          'apikey': SUPABASE_KEY,
+          'Authorization': `Bearer ${SUPABASE_KEY}`
+        }
+      });
+      
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      
+      // If REST API works, use it for all tables
+      console.log('✅ Supabase REST API accessible');
+      window.USE_REST_API = true;
+      await loadAllData();
+      console.log('✅ All data loaded successfully');
+    } catch (err) {
+      console.error('❌ Error loading data:', err);
+      hideLoadingOverlay();
+      $('main').innerHTML = `
+        <div style="padding:60px 28px;text-align:center;color:var(--text2)">
+          <div style="font-size:36px;margin-bottom:16px">⚠️</div>
+          <div style="font-size:16px;color:var(--text);margin-bottom:8px">Error Loading Data</div>
+          <div style="font-size:12px;margin-bottom:12px">${err.message || 'Unknown error'}</div>
+          <div style="font-size:11px;color:#888">Check browser console (F12) for details</div>
+        </div>`;
+    }
+  };
+  script.onerror = (err) => {
+    console.error('❌ Failed to load Supabase JS library:', err);
+    // Fallback: try REST API directly without library
+    console.log('🔄 Attempting fallback REST API mode...');
+    window.USE_REST_API = true;
+    loadAllData().catch(e => {
+      hideLoadingOverlay();
+      $('main').innerHTML = `
+        <div style="padding:60px 28px;text-align:center;color:var(--text2)">
+          <div style="font-size:36px;margin-bottom:16px">⚠️</div>
+          <div style="font-size:16px;color:var(--text);margin-bottom:8px">Cannot load Supabase</div>
+          <div style="font-size:12px;margin-bottom:12px">Network error</div>
+          <div style="font-size:11px;color:#888">Check your internet connection</div>
+        </div>`;
+    });
+  };
+  document.head.appendChild(script);
+});
 // ══════════════════════════════════════════════════════════
 let wmInited = false;
 
@@ -2287,21 +2378,7 @@ function initWorldMap() {
   });
 }
 
-window.addEventListener('DOMContentLoaded', () => {
-  const script = document.createElement('script');
-  script.src = 'https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js';
-  script.onload = () => loadAllData();
-  script.onerror = () => {
-    hideLoadingOverlay();
-    $('main').innerHTML = `
-      <div style="padding:60px 28px;text-align:center;color:var(--text2)">
-        <div style="font-size:36px;margin-bottom:16px">⚠️</div>
-        <div style="font-size:16px;color:var(--text);margin-bottom:8px">Cannot load CSV data</div>
-        <div style="font-size:12px">Run via local server: <code style="color:var(--gold)">python -m http.server 8080</code></div>
-      </div>`;
-  };
-  document.head.appendChild(script);
-});
+// (Supabase initialization moved to earlier DOMContentLoaded event)
 </script>
 <script src="timemachine3d.js"></script>
 </body>
