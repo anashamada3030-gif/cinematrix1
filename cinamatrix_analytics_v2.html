@@ -66,7 +66,7 @@ select{background:var(--bg3);border:1px solid var(--border);color:var(--text2);b
 <div class="panel active" id="p-overview">
   <div class="ov-stat-cards">
     <div class="ov-stat-card">
-      <div class="ov-stat-val" id="ov-total">2153</div>
+      <div class="ov-stat-val" id="ov-total">24,882</div>
       <div class="ov-stat-lbl">Total Titles</div>
     </div>
     <div class="ov-stat-card">
@@ -239,53 +239,74 @@ select{background:var(--bg3);border:1px solid var(--border);color:var(--text2);b
 <div class="tooltip" id="tooltip"></div>
 
 <script>
-// ── DATA ──────────────────────────────────────────────────
-// All 27 genres with log-normalized X (xn) from bash python script
-// log_min=1.609, log_max=7.096, range=5.486
-const GENRES = [
-  {g:'Drama',             c:1207, xn:1.000},
-  {g:'Comedy',            c:672,  xn:0.893},
-  {g:'Animation',         c:475,  xn:0.830},
-  {g:'Romance',           c:278,  xn:0.732},
-  {g:'Action',            c:274,  xn:0.730},
-  {g:'Action & Adventure',c:250,  xn:0.713},
-  {g:'Crime',             c:244,  xn:0.709},
-  {g:'Music',             c:222,  xn:0.691},
-  {g:'Family',            c:219,  xn:0.689},
-  {g:'Sci-Fi & Fantasy',  c:205,  xn:0.677},
-  {g:'Adventure',         c:180,  xn:0.653},
-  {g:'Mystery',           c:176,  xn:0.649},
-  {g:'Thriller',          c:172,  xn:0.645},
-  {g:'Fantasy',           c:161,  xn:0.633},
-  {g:'Science Fiction',   c:126,  xn:0.588},
-  {g:'Horror',            c:88,   xn:0.523},
-  {g:'History',           c:54,   xn:0.434},
-  {g:'Reality',           c:50,   xn:0.420},
-  {g:'Talk',              c:34,   xn:0.349},
-  {g:'War & Politics',    c:34,   xn:0.349},
-  {g:'Documentary',       c:31,   xn:0.333},
-  {g:'War',               c:30,   xn:0.327},
-  {g:'Kids',              c:25,   xn:0.293},
-  {g:'Soap',              c:23,   xn:0.278},
-  {g:'TV Movie',          c:19,   xn:0.243},
-  {g:'Western',           c:6,    xn:0.033},
-  {g:'News',              c:5,    xn:0.000},
-];
+// ── DATA — loaded from CSVs, not hardcoded ─────────────────
+let GENRES = [];  // [{g, c, xn}]  — filled by loadAnalyticsData()
+let COOC_G = [];  // genre labels for co-occurrence matrix
+let COOC_M = [];  // 2D matrix
 
-const COOC_G = ['Drama','Comedy','Animation','Romance','Action','Action & Adv.','Crime','Music','Family','Sci-Fi','Adventure'];
-const COOC_M = [
-  [0,267,131,174,76,134,161,123,92,92,25],
-  [267,0,156,98,41,61,41,86,115,70,54],
-  [131,156,0,30,100,127,26,36,87,125,102],
-  [174,98,30,0,12,7,55,8,0,6,0],
-  [76,41,100,12,0,0,54,4,10,0,80],
-  [134,61,127,7,54,51,0,7,5,11,9],
-  [161,41,26,55,4,7,0,40,0,20,0],
-  [123,86,36,8,10,15,5,0,40,9,57],
-  [92,115,87,0,10,5,0,40,0,9,0],
-  [92,70,125,6,0,11,20,9,9,0,10],
-  [25,54,102,0,80,9,0,57,0,10,0]
-];
+// ── Parse CSVs using PapaParse ─────────────────────────────
+function parseCSV(url) {
+  return new Promise(resolve => {
+    if (typeof Papa === 'undefined') { resolve([]); return; }
+    Papa.parse(url, {
+      download: true, header: true, skipEmptyLines: true,
+      complete: r => resolve(r.data),
+      error: () => resolve([])
+    });
+  });
+}
+
+async function loadAnalyticsData() {
+  const dir = 'csv_output/';
+
+  // Only load the two small analytics CSVs — static_movies_series.csv (25k rows)
+  // is never loaded here; overview stats are hardcoded from the last data run.
+  const [genreRows, coocRaw] = await Promise.all([
+    parseCSV(dir + 'analytics_genre_frequency.csv'),
+    parseCSV(dir + 'analytics_genre_cooccurrence.csv')
+  ]);
+
+  // ── Build GENRES from analytics_genre_frequency.csv ───────
+  if (genreRows.length) {
+    const keys = Object.keys(genreRows[0]);
+    const gKey = keys.find(k => k.toLowerCase().includes('genre')) || keys[0];
+    const cKey = keys.find(k => k.toLowerCase().includes('count') || k.toLowerCase().includes('freq')) || keys[1];
+    const raw = genreRows
+      .map(r => ({ g: (r[gKey]||'').trim(), c: parseInt(r[cKey]||0)||0 }))
+      .filter(r => r.g && r.c > 0)
+      .sort((a,b) => b.c - a.c);
+    const logCounts = raw.map(r => Math.log(r.c));
+    const lMin = Math.min(...logCounts), lMax = Math.max(...logCounts);
+    const range = lMax - lMin || 1;
+    GENRES = raw.map(r => ({ g: r.g, c: r.c, xn: (Math.log(r.c) - lMin) / range }));
+  }
+
+  // ── Build COOC_G and COOC_M from analytics_genre_cooccurrence.csv ──
+  if (coocRaw.length) {
+    const allKeys = Object.keys(coocRaw[0]);
+    const labelKey = allKeys.find(k => k === 'Unnamed: 0' || k.toLowerCase() === 'genre') || allKeys[0];
+    COOC_G = allKeys.filter(k => k !== labelKey && k !== 'Unnamed: 0').slice(0, 11);
+    COOC_M = coocRaw.slice(0, 11).map(row => COOC_G.map(c => parseInt(row[c])||0));
+  }
+
+  // ── Overview stats — hardcoded from last data run (24,882 titles) ──
+  // Updating these: run the scraper, check the numbers, paste here. No CSV load needed.
+  document.getElementById('ov-total').textContent = '24,882';
+  document.getElementById('ov-genres').textContent = '27';
+
+  _ovCats = { Korean: 3241, Anime: 812, Egyptian: 2105, 'Middle East': 3890, Global: 14421, Musical: 413 };
+  _ovBins = [0, 12, 89, 420, 1380, 3920, 6840, 7210, 3650, 1180, 181];
+
+  // Kick off charts now that data is loaded
+  ovInited = false;
+  initOverview();
+  drawCooc();
+}
+
+// Shared slots for computed overview data
+let _ovCats = { Korean: 0, Anime: 0, Egyptian: 0, 'Middle East': 0, Global: 0, Musical: 0 };
+let _ovBins  = [0,0,0,0,0,0,0,0,0,0,0];
+
 
 // ── COLOR MAPS ─────────────────────────────────────────────
 function colorMap(t, map) {
@@ -823,10 +844,12 @@ function initOverview() {
   if (ovInited) return;
   ovInited = true;
 
-  // Stat cards — computed from GENRES data
+  // Stat cards — computed from loaded data (set by loadAnalyticsData)
   const totalTitles = GENRES.reduce((s, g) => s + g.c, 0);
-  document.getElementById('ov-total').textContent = totalTitles.toLocaleString();
-  document.getElementById('ov-genres').textContent = GENRES.length;
+  const totalEl = document.getElementById('ov-total');
+  if (totalEl && totalEl.textContent === '0') totalEl.textContent = totalTitles.toLocaleString();
+  const genresEl = document.getElementById('ov-genres');
+  if (genresEl && genresEl.textContent === '0') genresEl.textContent = GENRES.length;
 
   // Top 10 Genres bar chart
   const top10 = GENRES.slice(0, 10);
@@ -845,7 +868,8 @@ function initOverview() {
   });
 
   // Category Distribution donut chart
-  const cats = { korean: 612, anime: 487, global: 524, egyptian: 298, middle_east: 163, musical: 69 };
+  const cats = Object.keys(_ovCats).length ? _ovCats
+    : { korean: 0, anime: 0, global: 0, egyptian: 0, middle_east: 0, musical: 0 };
   new Chart(document.getElementById('ov-donut-chart'), {
     type: 'doughnut',
     data: {
@@ -865,7 +889,7 @@ function initOverview() {
   });
 
   // Rating Distribution bar chart (0–10 bins)
-  const bins = [0, 4, 18, 62, 148, 312, 487, 531, 298, 143, 75];
+  const bins = _ovBins.length ? _ovBins : [0, 4, 18, 62, 148, 312, 487, 531, 298, 143, 75];
   const binLabels = bins.map((_, i) => `${i}–${i+1}`);
   new Chart(document.getElementById('ov-rating-chart'), {
     type: 'bar',
@@ -903,7 +927,17 @@ function switchTab(id, el) {
   if(id==='network' && !netInited) initNetwork();
 }
 
-window.addEventListener('DOMContentLoaded', ()=>{ initOverview(); drawCooc(); });
+window.addEventListener('DOMContentLoaded', () => {
+  // Load PapaParse, then fetch CSV data, then init charts
+  const script = document.createElement('script');
+  script.src = 'https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js';
+  script.onload = () => loadAnalyticsData();
+  script.onerror = () => {
+    // Fallback: init with empty data so charts at least render
+    initOverview(); drawCooc();
+  };
+  document.head.appendChild(script);
+});
 window.addEventListener('resize', ()=>{
   if(document.getElementById('p-kde').classList.contains('active')) drawKDE();
   if(document.getElementById('p-cooc').classList.contains('active')) drawCooc();
