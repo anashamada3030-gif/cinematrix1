@@ -2186,7 +2186,7 @@ async function loadAllData() {
     fetchTable('mood_recommendations','recommendation_mood.csv'),
     fetchTable('recommendation_pool', 'recommendation_pool.csv'),
     fetchTable('cinema_galaxy',       'static_cinema_galaxy.csv'),
-    fetchTable('cinema_world',        'static_cinema_world.csv'),
+    parseCSV(csvDir+'static_cinema_world.csv'), // CSV has all 137 countries; Supabase table is incomplete
     fetchTable('egypt_cinemas',       'egypt_cinema_20260508_1117.csv'),
     fetchTable('genre_frequency',     'analytics_genre_frequency.csv'),
     fetchTable('genre_cooccurrence',  'analytics_genre_cooccurrence.csv'),
@@ -2299,6 +2299,22 @@ initAll();
 _phase2Done = false;
 _workerReady = false;
 _startSearchWorker(csvDir);
+// If Supabase loaded data, inject it into the worker for fast in-memory search
+if (window.USE_REST_API && DATA.moviesSeries && DATA.moviesSeries.length > 0) {
+  // Small delay to ensure worker is ready
+  setTimeout(() => {
+    if (_worker) {
+      _worker.postMessage({ type: 'LOAD_DATA', data: {
+        movies: DATA.moviesSeries,
+        actors: DATA.actors
+      }});
+    }
+  }, 200);
+} else {
+  // Fall through: worker will stream CSVs itself
+  _worker && _worker.postMessage({ type: 'LOAD_MOVIES', data: { url: csvDir + 'static_movies_series.csv' } });
+  _worker && _worker.postMessage({ type: 'LOAD_ACTORS', data: { url: csvDir + 'static_actors.csv' } });
+}
 }
 
 // ── Worker bootstrap — streams heavy CSVs off-thread ─────────────────────────
